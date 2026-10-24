@@ -8,7 +8,9 @@ rust-version = "1.80"
 build = "build.rs"
 
 [dependencies]
+percent-encoding = "2.3"
 slint = "1.10"
+url = "2.5"
 
 [build-dependencies]
 slint-build = "1.10"
