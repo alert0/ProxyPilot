@@ -45,4 +45,4 @@ HY2 share links can contain credentials and server metadata. Keep them local, re
 
 ## Development status
 
-Current status: Rust + Slint M0 scaffold committed. The UI uses static demo data; real HY2 parsing and sing-box process integration are not yet implemented. See `docs/M0-ENGINEERING-FOUNDATION.md`.
+Current status: M0 Windows CI passes on commit `a5b1e81`. M1 has started with a tested HY2 share-link parser; UI import workflow and sing-box integration are not yet complete. See `docs/IMPLEMENTATION-PLAN.md`.
