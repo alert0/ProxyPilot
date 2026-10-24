@@ -34,6 +34,7 @@
 ## Design documents
 
 - [Product and architecture](docs/PRODUCT-ARCHITECTURE.md)
+- [Implementation plan](docs/IMPLEMENTATION-PLAN.md)
 - [Development roadmap and acceptance](docs/ROADMAP-ACCEPTANCE.md)
 - [Security and operations](docs/SECURITY-OPERATIONS.md)
 
@@ -43,4 +44,4 @@ HY2 share links can contain credentials and server metadata. Keep them local, re
 
 ## Development status
 
-Design-first. The repository is being initialized with architecture and acceptance documents before implementation.
+Current status: design and implementation plan committed. Runtime application code has not yet been committed; follow `docs/IMPLEMENTATION-PLAN.md` from M0.
