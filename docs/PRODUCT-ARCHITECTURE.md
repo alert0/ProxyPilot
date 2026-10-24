@@ -4,7 +4,7 @@
 - 产品：ProxyPilot Desktop
 - 平台：Windows 10/11 x64（具体最低版本在构建验证后锁定）
 - 核心：官方 sing-box 可执行文件，由桌面应用管理
-- UI：Tauri + React + TypeScript
+- UI：Rust + Slint（原生桌面应用，不使用 WebView）
 - 首版节点目标：10 个 HY2 节点；架构不硬编码为只能支持 10 个
 
 ## 1. 产品目标
@@ -27,9 +27,9 @@
 ## 3. 建议技术结构
 
 ```text
-React UI (nodes / mappings / tests / logs)
+Slint UI (nodes / mappings / tests / logs)
           |
-          | Tauri commands (typed request/response)
+          | typed Rust callbacks / application services
           v
 Rust application services
   ├─ Node import & URI parsing
@@ -51,14 +51,14 @@ Rust application services
 
 ### UI
 
-- React + TypeScript.
-- Componentized pages: Overview, Nodes, Local Endpoints, Diagnostics, Logs, Settings.
-- UI state is not the source of truth for process status; backend process state and test results are authoritative.
+- Rust + Slint declarative desktop UI; no React, Node.js, Tauri, or WebView.
+- Pages: Overview, Nodes, Local Endpoints, Diagnostics, Logs, Settings.
+- UI state is not the source of truth for process status; Rust services and test results are authoritative.
 - Never expose secret query parameters in toasts, errors, tables, or copied diagnostics.
 
-### Tauri / Rust backend
+### Rust application layer
 
-- Expose narrow, typed commands; do not provide a generic arbitrary shell command API.
+- Expose narrow, typed application services and callbacks; do not provide a generic arbitrary shell command API.
 - Launch sing-box using a fixed executable path and argument array, not shell-concatenated strings.
 - Capture stdout/stderr and redact before display or persistence.
 - Track the exact child process handle/PID created by the application.
