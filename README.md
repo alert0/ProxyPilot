@@ -17,7 +17,7 @@
 ## Initial scope
 
 - Windows x64 desktop application.
-- Tauri + React UI; Rust/Tauri backend for process and filesystem operations.
+- Rust + Slint native desktop UI and application logic; no React, Node.js, Tauri, or WebView.
 - sing-box as a separately managed core process.
 - First milestone: 10 HY2 nodes and 10 loopback-only SOCKS5 endpoints.
 - Suggested default ports: 18001–18010; configurable with collision checks.
@@ -34,6 +34,7 @@
 ## Design documents
 
 - [Product and architecture](docs/PRODUCT-ARCHITECTURE.md)
+- [M0 engineering foundation](docs/M0-ENGINEERING-FOUNDATION.md)
 - [Implementation plan](docs/IMPLEMENTATION-PLAN.md)
 - [Development roadmap and acceptance](docs/ROADMAP-ACCEPTANCE.md)
 - [Security and operations](docs/SECURITY-OPERATIONS.md)
@@ -44,4 +45,4 @@ HY2 share links can contain credentials and server metadata. Keep them local, re
 
 ## Development status
 
-Current status: design and implementation plan committed. Runtime application code has not yet been committed; follow `docs/IMPLEMENTATION-PLAN.md` from M0.
+Current status: Rust + Slint M0 scaffold committed. The UI uses static demo data; real HY2 parsing and sing-box process integration are not yet implemented. See `docs/M0-ENGINEERING-FOUNDATION.md`.
