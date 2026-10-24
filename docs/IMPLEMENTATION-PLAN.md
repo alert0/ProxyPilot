@@ -3,7 +3,7 @@
 - 版本：V1
 - 状态：待执行
 - 目标平台：Windows x64
-- UI：Tauri 2 + React + TypeScript
+- UI：Rust + Slint
 - 本地后端：Rust
 - 代理核心：官方 sing-box
 - 首版目标：最多 10 个 HY2 节点、独立 SOCKS5 入口、每个入口显式绑定一个固定出站
@@ -48,7 +48,7 @@
 
 ### 任务
 
-- 初始化 Tauri 2、React、TypeScript、Rust 工程。
+- 初始化 Rust + Slint 工程。
 - 建立前端格式化、lint、类型检查、构建脚本。
 - 建立 Rust format、clippy、test 检查。
 - 配置 GitHub Actions，在 PR 和主分支推送时运行检查。
@@ -60,7 +60,7 @@
 ### 验收
 
 - 新克隆仓库后可按 README 安装并启动开发模式。
-- 前端 typecheck/build、Rust fmt/clippy/test 在 CI 中执行。
+- Rust fmt、cargo check、cargo test、Clippy 在 CI 中执行。
 - 界面所有按钮要么有真实作用，要么明确标记为未接入，不允许假成功。
 - 不包含真实节点链接、凭据、生产配置或本机日志。
 
