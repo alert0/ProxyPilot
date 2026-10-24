@@ -1,0 +1,191 @@
+import { Button, VerticalBox, HorizontalBox, LineEdit } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "ProxyPilot";
+    width: 1120px;
+    height: 760px;
+    min-width: 960px;
+    min-height: 640px;
+    background: #f4f6fa;
+
+    in-out property <string> status_message: "M0 工程骨架：尚未连接真实 sing-box 核心。";
+    callback navigate(string);
+    callback action_requested(string);
+
+    VerticalBox {
+        spacing: 0px;
+
+        HorizontalBox {
+            height: 56px;
+            background: #111722;
+            padding-left: 20px;
+            padding-right: 20px;
+            alignment: center;
+
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                background: #2868bc;
+                border-radius: 8px;
+                Text {
+                    text: "P";
+                    color: white;
+                    font-size: 18px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            VerticalBox {
+                padding-left: 10px;
+                alignment: center;
+                spacing: 1px;
+                Text { text: "ProxyPilot"; color: #f4f7fc; font-size: 17px; font-weight: 700; }
+                Text { text: "LOCAL PROXY CONTROL"; color: #8c9bb0; font-size: 9px; }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Text { text: "Windows Desktop  ·  M0"; color: #aab5c5; font-size: 11px; }
+        }
+
+        HorizontalBox {
+            spacing: 0px;
+
+            VerticalBox {
+                width: 205px;
+                background: #171f2b;
+                padding: 14px;
+                spacing: 7px;
+
+                Text { text: "工作空间"; color: #7f8da1; font-size: 10px; }
+
+                for item[index] in ["运行概览", "代理节点", "端口映射", "诊断与验收", "运行日志", "设置"]: Button {
+                    text: item;
+                    height: 38px;
+                    horizontal-stretch: 1;
+                    clicked => { root.navigate(item); }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                Rectangle {
+                    background: #202b3a;
+                    border-radius: 8px;
+                    padding: 10px;
+                    height: 76px;
+                    VerticalBox {
+                        spacing: 5px;
+                        Text { text: "sing-box 核心"; color: #e5ebf4; font-size: 12px; font-weight: 600; }
+                        Text { text: "尚未连接"; color: #a3afc0; font-size: 10px; }
+                        Text { text: "M0 · 演示界面"; color: #e0bd77; font-size: 10px; }
+                    }
+                }
+            }
+
+            VerticalBox {
+                padding: 24px;
+                spacing: 16px;
+
+                HorizontalBox {
+                    alignment: center;
+                    Text { text: "代理节点"; color: #202b3c; font-size: 25px; font-weight: 700; }
+                    Rectangle { horizontal-stretch: 1; }
+                    Button { text: "导入节点"; clicked => { root.action_requested("import"); } }
+                }
+
+                Rectangle {
+                    background: #fff8e9;
+                    border-color: #f0dfb7;
+                    border-width: 1px;
+                    border-radius: 8px;
+                    padding: 12px;
+                    HorizontalBox {
+                        spacing: 10px;
+                        Text { text: "提示"; color: #98712a; font-size: 12px; font-weight: 700; }
+                        Text {
+                            text: root.status_message;
+                            color: #866f4c;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                HorizontalBox {
+                    spacing: 12px;
+                    for card[index] in [
+                        { title: "已导入节点", value: "00", detail: "目标 10 个" },
+                        { title: "已验证出口", value: "00", detail: "真实测试尚未接入" },
+                        { title: "异常节点", value: "00", detail: "无实时状态" }
+                    ]: Rectangle {
+                        horizontal-stretch: 1;
+                        background: white;
+                        border-color: #e5eaf1;
+                        border-width: 1px;
+                        border-radius: 9px;
+                        padding: 14px;
+                        min-height: 105px;
+                        VerticalBox {
+                            spacing: 7px;
+                            Text { text: card.title; color: #7c899b; font-size: 11px; }
+                            Text { text: card.value; color: #263348; font-size: 26px; font-weight: 700; }
+                            Text { text: card.detail; color: #9aa5b3; font-size: 10px; }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: white;
+                    border-color: #e5eaf1;
+                    border-width: 1px;
+                    border-radius: 9px;
+                    padding: 16px;
+                    VerticalBox {
+                        spacing: 12px;
+                        HorizontalBox {
+                            Text { text: "本地 SOCKS5 端口映射"; color: #293548; font-size: 14px; font-weight: 700; }
+                            Rectangle { horizontal-stretch: 1; }
+                            Button { text: "测试连接"; clicked => { root.action_requested("test"); } }
+                            Button { text: "启动核心"; clicked => { root.action_requested("start"); } }
+                        }
+
+                        HorizontalBox {
+                            Text { text: "PROFILE"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
+                            Text { text: "本地监听"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
+                            Text { text: "目标节点"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
+                            Text { text: "状态"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
+                        }
+
+                        for item[index] in [
+                            { name: "Profile 01", port: "18001", node: "HY2-01" },
+                            { name: "Profile 02", port: "18002", node: "HY2-02" },
+                            { name: "Profile 03", port: "18003", node: "HY2-03" },
+                            { name: "Profile 04", port: "18004", node: "HY2-04" },
+                            { name: "Profile 05", port: "18005", node: "HY2-05" }
+                        ]: HorizontalBox {
+                            height: 34px;
+                            Rectangle { horizontal-stretch: 1; Text { text: item.name; color: #354257; font-size: 11px; vertical-alignment: center; } }
+                            Rectangle { horizontal-stretch: 1; Text { text: "127.0.0.1:" + item.port; color: #64758d; font-size: 11px; vertical-alignment: center; } }
+                            Rectangle { horizontal-stretch: 1; Text { text: item.node; color: #64758d; font-size: 11px; vertical-alignment: center; } }
+                            Rectangle { horizontal-stretch: 1; Text { text: "未检测"; color: #8d98a8; font-size: 10px; vertical-alignment: center; } }
+                        }
+
+                        Text { text: "当前为 M0 静态示例数据；尚未绑定真实节点或监听端口。"; color: #9aa5b3; font-size: 10px; }
+                    }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                HorizontalBox {
+                    Text { text: "ProxyPilot  v0.1.0"; color: #9aa5b3; font-size: 10px; }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text { text: "本地运行 · 不修改 v2rayN"; color: #9aa5b3; font-size: 10px; }
+                }
+            }
+        }
+    }
+}
