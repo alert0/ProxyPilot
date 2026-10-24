@@ -1,0 +1,17 @@
+/target
+/build
+/dist
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+*.tmp
+config/runtime.json
+config/production.json
+links/nodes.txt
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
