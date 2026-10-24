@@ -32,8 +32,6 @@ jobs:
   
       - name: Run tests
         run: cargo test
-        continue-on-error: true
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-        continue-on-error: true
