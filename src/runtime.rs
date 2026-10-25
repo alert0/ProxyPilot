@@ -2,8 +2,8 @@ use crate::{config::generate_config, nodes::NodeStore};
 use serde_json::Value;
 use std::{
     fs::{self, OpenOptions},
-    net::TcpListener,
     io::Write,
+    net::TcpListener,
     path::PathBuf,
     process::{Child, Command, Stdio},
 };
@@ -185,9 +185,8 @@ impl RuntimeManager {
                 .as_u64()
                 .and_then(|value| u16::try_from(value).ok())
                 .ok_or_else(|| "配置中的监听端口无效".to_owned())?;
-            TcpListener::bind(("127.0.0.1", port)).map_err(|_| {
-                format!("本地端口 {port} 已被占用；未结束或修改任何其他进程")
-            })?;
+            TcpListener::bind(("127.0.0.1", port))
+                .map_err(|_| format!("本地端口 {port} 已被占用；未结束或修改任何其他进程"))?;
         }
         Ok(())
     }
