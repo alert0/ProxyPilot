@@ -4,7 +4,7 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     net::TcpListener,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
 
@@ -197,6 +197,7 @@ impl RuntimeManager {
             .parent()
             .ok_or_else(|| "配置文件路径无效".to_owned())?;
         fs::create_dir_all(parent).map_err(|_| "无法创建本地配置目录".to_owned())?;
+        secure_config_directory(parent)?;
         let data =
             serde_json::to_vec_pretty(config).map_err(|_| "无法序列化 sing-box 配置".to_owned())?;
         let temporary = self.config_path.with_extension("json.tmp");
@@ -215,6 +216,38 @@ impl RuntimeManager {
         fs::rename(&temporary, &self.config_path)
             .map_err(|_| "无法替换本地 sing-box 配置文件".to_owned())
     }
+}
+
+
+#[cfg(windows)]
+fn secure_config_directory(path: &Path) -> Result<(), String> {
+    let username = std::env::var("USERNAME")
+        .map_err(|_| "无法识别当前 Windows 用户，拒绝写入包含凭据的配置文件".to_owned())?;
+    let domain = std::env::var("USERDOMAIN").unwrap_or_else(|_| ".".to_owned());
+    let account = format!("{domain}\\{username}");
+    let user_acl = format!("{account}:(OI)(CI)F");
+    let output = Command::new("icacls.exe")
+        .arg(path)
+        .arg("/inheritance:r")
+        .arg("/grant:r")
+        .arg(user_acl)
+        .arg("*S-1-5-18:(OI)(CI)F")
+        .arg("*S-1-5-32-544:(OI)(CI)F")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|_| "无法运行 icacls 设置本地配置目录权限".to_owned())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("无法收紧本地配置目录 ACL，已阻止写入包含凭据的配置".to_owned())
+    }
+}
+
+#[cfg(not(windows))]
+fn secure_config_directory(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 impl Drop for RuntimeManager {
