@@ -1,4 +1,4 @@
-use crate::nodes::{Hy2Node, parse_hy2_link};
+use crate::nodes::{parse_hy2_link, Hy2Node};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -100,8 +100,7 @@ impl NodeStore {
 
     pub fn open_with(path: PathBuf, vault: Box<dyn SecretVault>) -> Result<Self, String> {
         let nodes = if path.exists() {
-            let raw = fs::read_to_string(&path)
-                .map_err(|_| "无法读取本地节点清单".to_owned())?;
+            let raw = fs::read_to_string(&path).map_err(|_| "无法读取本地节点清单".to_owned())?;
             let file: NodeFile = serde_json::from_str(&raw)
                 .map_err(|_| "本地节点清单格式无效；原文件已保留，请检查或备份".to_owned())?;
             if file.version != 1 {
@@ -139,8 +138,8 @@ impl NodeStore {
             password: node.password,
             obfs_password: node.obfs_password,
         };
-        let secret_json = serde_json::to_string(&secret)
-            .map_err(|_| "无法序列化节点凭据".to_owned())?;
+        let secret_json =
+            serde_json::to_string(&secret).map_err(|_| "无法序列化节点凭据".to_owned())?;
         let listen_port = (18001..=18010)
             .find(|port| self.nodes.iter().all(|saved| saved.listen_port != *port))
             .ok_or_else(|| "没有可分配的本地端口，请先删除一个节点".to_owned())?;
@@ -274,12 +273,12 @@ impl NodeStore {
             version: 1,
             nodes: self.nodes.clone(),
         };
-        let json = serde_json::to_vec_pretty(&file)
-            .map_err(|_| "无法序列化本地节点清单".to_owned())?;
+        let json =
+            serde_json::to_vec_pretty(&file).map_err(|_| "无法序列化本地节点清单".to_owned())?;
         let tmp = self.path.with_extension("json.tmp");
         {
-            let mut output = fs::File::create(&tmp)
-                .map_err(|_| "无法写入本地节点清单临时文件".to_owned())?;
+            let mut output =
+                fs::File::create(&tmp).map_err(|_| "无法写入本地节点清单临时文件".to_owned())?;
             output
                 .write_all(&json)
                 .map_err(|_| "无法写入本地节点清单".to_owned())?;
@@ -287,8 +286,7 @@ impl NodeStore {
                 .sync_all()
                 .map_err(|_| "无法刷新本地节点清单".to_owned())?;
         }
-        fs::rename(&tmp, &self.path)
-            .map_err(|_| "无法原子替换本地节点清单".to_owned())
+        fs::rename(&tmp, &self.path).map_err(|_| "无法原子替换本地节点清单".to_owned())
     }
 }
 
