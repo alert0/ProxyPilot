@@ -53,4 +53,4 @@ HY2 share links can contain credentials and server metadata. Keep them local, re
 
 ## Development status
 
-Current status: M0 Windows CI passes on commit `a5b1e81`. M1 has started with a tested HY2 share-link parser; UI import workflow and sing-box integration are not yet complete. See `docs/IMPLEMENTATION-PLAN.md`.
+Current status: M1 import preview is implemented in the Slint UI. It accepts `hy2://` / `hysteria2://` links and Base64-encoded link lists, then parses each line locally with sanitized summaries. This is not yet persistent node management: parsed nodes are not saved, editable, or connected to sing-box. Check the latest Windows CI before treating the current commit as accepted. See `docs/IMPLEMENTATION-PLAN.md`.
