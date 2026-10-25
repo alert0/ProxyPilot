@@ -80,7 +80,10 @@ impl std::error::Error for Hy2ParseError {}
 /// reported by name only, and credentials are redacted from Debug output.
 pub fn parse_hy2_link(input: &str) -> Result<Hy2Node, Hy2ParseError> {
     let trimmed = input.trim();
-    if !trimmed.get(..6).is_some_and(|prefix| prefix.eq_ignore_ascii_case("hy2://")) {
+    if !trimmed
+        .get(..6)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("hy2://"))
+    {
         return Err(Hy2ParseError::UnsupportedScheme);
     }
 
@@ -187,7 +190,11 @@ pub fn parse_hy2_link(input: &str) -> Result<Hy2Node, Hy2ParseError> {
 }
 
 fn non_empty(value: String) -> Option<String> {
-    if value.is_empty() { None } else { Some(value) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 #[cfg(test)]
@@ -261,10 +268,8 @@ mod tests {
 
     #[test]
     fn unknown_parameters_are_reported_without_values() {
-        let node = parse_hy2_link(
-            "hy2://secret@example.com:443?custom=do-not-log-this-value",
-        )
-        .unwrap();
+        let node =
+            parse_hy2_link("hy2://secret@example.com:443?custom=do-not-log-this-value").unwrap();
         assert_eq!(node.warnings.len(), 1);
         assert_eq!(node.warnings[0].parameter, "custom");
         assert!(!format!("{:?}", node).contains("do-not-log-this-value"));
