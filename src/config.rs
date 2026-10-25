@@ -187,10 +187,7 @@ mod tests {
         unsupported.warnings.push("pinSHA256".to_owned());
         assert_eq!(
             generate_config(&[unsupported], secret).unwrap_err(),
-            ConfigError::UnsupportedParameters(
-                "node-0".to_owned(),
-                vec!["pinSHA256".to_owned()]
-            )
+            ConfigError::UnsupportedParameters("node-0".to_owned(), vec!["pinSHA256".to_owned()])
         );
     }
 
