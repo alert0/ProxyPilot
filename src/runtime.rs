@@ -36,10 +36,11 @@ impl RuntimeManager {
     }
 
     pub fn is_running(&mut self) -> bool {
-        let Some(child) = self.child.as_mut() else {
-            return false;
+        let status = match self.child.as_mut() {
+            Some(child) => child.try_wait(),
+            None => return false,
         };
-        match child.try_wait() {
+        match status {
             Ok(None) | Err(_) => true,
             Ok(Some(_)) => {
                 self.child = None;
@@ -157,19 +158,18 @@ impl RuntimeManager {
     }
 
     pub fn stop(&mut self) -> Result<String, String> {
-        let Some(child) = self.child.as_mut() else {
-            return Ok("当前没有由 ProxyPilot 启动的 sing-box 进程".to_owned());
+        let status = {
+            let Some(child) = self.child.as_mut() else {
+                return Ok("当前没有由 ProxyPilot 启动的 sing-box 进程".to_owned());
+            };
+            child
+                .try_wait()
+                .map_err(|_| "无法检查 sing-box 进程状态；保留进程句柄以便重试".to_owned())?
         };
-        match child
-            .try_wait()
-            .map_err(|_| "无法检查 sing-box 进程状态；保留进程句柄以便重试".to_owned())?
-        {
-            Some(_) => {
-                self.child = None;
-                let _ = fs::remove_file(&self.config_path);
-                return Ok("sing-box 进程已经退出".to_owned());
-            }
-            None => {}
+        if status.is_some() {
+            self.child = None;
+            let _ = fs::remove_file(&self.config_path);
+            return Ok("sing-box 进程已经退出".to_owned());
         }
 
         let Some(mut child) = self.child.take() else {
