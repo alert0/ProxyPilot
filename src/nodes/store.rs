@@ -122,7 +122,14 @@ impl NodeStore {
                 && saved.server_port == node.server_port
                 && saved.name == node.name
         }) {
-            return Ok(AddNodeResult::Duplicate(existing.id.clone()));
+            let raw = self.vault.get(&existing.secret_key)?;
+            let saved_secret: NodeSecret = serde_json::from_str(&raw)
+                .map_err(|_| "现有节点凭据格式无效，无法安全检查重复项".to_owned())?;
+            if saved_secret.password == node.password
+                && saved_secret.obfs_password == node.obfs_password
+            {
+                return Ok(AddNodeResult::Duplicate(existing.id.clone()));
+            }
         }
         if self.nodes.len() >= MAX_NODES {
             return Ok(AddNodeResult::LimitReached);
@@ -336,7 +343,7 @@ mod tests {
         let path = temp_path();
         let mut store = NodeStore::open_with(path.clone(), Box::<MemoryVault>::default()).unwrap();
         let summary = store.import_text(
-            "hy2://fake-password@example.com:443#Node%201\nhy2://other-password@example.com:443#Node%201",
+            "hy2://fake-password@example.com:443#Node%201\nhy2://fake-password@example.com:443#Node%201",
         );
         assert_eq!(summary.added.len(), 1);
         assert_eq!(summary.duplicates, 1);
@@ -345,6 +352,19 @@ mod tests {
         assert!(!raw.contains("fake-password"));
         assert!(!raw.contains("other-password"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn same_endpoint_and_name_with_different_credentials_is_not_a_duplicate() {
+        let mut store = test_store();
+        let summary = store.import_text(
+            "hy2://first-password@example.com:443#Node\nhy2://second-password@example.com:443#Node",
+        );
+        assert_eq!(summary.added.len(), 2);
+        assert_eq!(summary.duplicates, 0);
+        assert_eq!(store.nodes()[0].listen_port, 18001);
+        assert_eq!(store.nodes()[1].listen_port, 18002);
+        let _ = fs::remove_file(&store.path);
     }
 
     #[test]
