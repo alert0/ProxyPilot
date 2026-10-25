@@ -70,8 +70,8 @@ pub fn generate_config(
             ));
         }
 
-        let secret = secret_for(&node.id)
-            .map_err(|_| ConfigError::MissingSecret(node.id.clone()))?;
+        let secret =
+            secret_for(&node.id).map_err(|_| ConfigError::MissingSecret(node.id.clone()))?;
         if node.obfs_type.is_some() != secret.obfs_password.is_some() {
             return Err(ConfigError::InvalidObfuscation(node.id.clone()));
         }
@@ -168,7 +168,12 @@ mod tests {
             assert_eq!(config["inbounds"].as_array().unwrap().len(), count);
             assert_eq!(config["outbounds"].as_array().unwrap().len(), count);
             assert_eq!(config["route"]["rules"].as_array().unwrap().len(), count);
-            for (index, rule) in config["route"]["rules"].as_array().unwrap().iter().enumerate() {
+            for (index, rule) in config["route"]["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .enumerate()
+            {
                 assert_eq!(rule["inbound"][0], format!("in-node-{index}"));
                 assert_eq!(rule["outbound"], format!("out-node-{index}"));
             }
