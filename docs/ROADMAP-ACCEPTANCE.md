@@ -1,5 +1,7 @@
 # ProxyPilot 开发路线图与验收标准
 
+> 历史初始路线图。实现现已采用 Rust + Slint（没有 Tauri/React）。当前功能与验收状态见 [OPERATIONS](OPERATIONS.md) 和 [ACCEPTANCE](ACCEPTANCE.md)。
+
 - 状态：Initial plan
 - 原则：每阶段可独立验收；先验证核心能力，再扩大 UI 和打包范围。
 - 首版基线：Windows x64、10 个 HY2 节点、10 个本地 SOCKS5 入口。

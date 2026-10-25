@@ -1,5 +1,7 @@
 # ProxyPilot 安全与运维规范
 
+> v0.2.0 使用 Rust + Slint，没有 Tauri 命令面。Windows 原生 keyring 后端已显式启用；核心哈希持久化、校验文件清理、500 条结构化日志、确认式本地故障注入及元数据备份恢复均已实现。当前操作与验证状态见 [OPERATIONS](OPERATIONS.md) 和 [ACCEPTANCE](ACCEPTANCE.md)。本文件下方清单保留为人工发行审查项，不代表已完成干净环境或真实网络验收。
+
 ## 1. Secrets handling
 
 HY2 share links may contain server names, authentication passwords, SNI, and obfuscation secrets. Treat the complete link as a credential.

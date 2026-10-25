@@ -53,7 +53,9 @@ cargo run
 - Choose an existing `sing-box.exe` with the native file picker. ProxyPilot checks its version, generates configuration in memory, checks local port conflicts, runs `sing-box check`, then starts only the child process it created.
 - “测试出口 IP” and “DNS 路径诊断” run asynchronously using Windows `curl.exe`.
 
-Browser-level DNS/WebRTC testing, core download/signature verification, and controlled live failure injection are not implemented yet.
+Version 0.2.0 adds working navigation, editable ports/Profiles, background lifecycle operations, persisted settings, diagnostic history/export, metadata backup/restore, and confirmed app-local failure isolation. The official Windows x64 core downloader checks GitHub's SHA-256 asset digest; local EXEs can be checked against a trusted expected hash. Prior core versions remain available for rollback. SHA-256 integrity is not a publisher signature.
+
+See [Windows operations](docs/OPERATIONS.md), [acceptance evidence](docs/ACCEPTANCE.md) and [changelog](CHANGELOG.md). Build a local portable ZIP with `./scripts/package.ps1`. Browser DNS/DoH/WebRTC inspection is a documented manual workflow; live network and clean-machine acceptance remain separate from source checks.
 
 ## Safety and privacy
 
@@ -61,4 +63,4 @@ HY2 links are credentials. Do not commit real links or generated production conf
 
 ## Development status
 
-M1 node management (including UTF-8 text-file import), M2 config generation with one-to-one route-isolation validation, M3 core lifecycle, and M4 egress/DNS-path diagnostics with bounded local history are implemented in code. Windows CI has verified formatting and compilation on an earlier commit; the latest changes are still being revalidated by GitHub Actions. A real HY2 profile and local Windows desktop acceptance are still required before claiming the full product is ready. See `docs/IMPLEMENTATION-PLAN.md`.
+The Windows v0.2.0 workflows are implemented and validated locally with automated tests and official-core synthetic acceptance. No remote CI result, live-node connectivity, browser leak result, clean-machine installation, or public distribution licensing review is inferred from those checks. See `docs/ACCEPTANCE.md` for evidence and remaining environment acceptance.

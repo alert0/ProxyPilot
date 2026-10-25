@@ -1,5 +1,7 @@
 # ProxyPilot 实施开发计划
 
+> 此文保留原始分阶段计划。v0.2.0 的当前实现、操作流程与验收证据分别见 [CHANGELOG](../CHANGELOG.md)、[OPERATIONS](OPERATIONS.md)、[ACCEPTANCE](ACCEPTANCE.md)。原计划中的“待实现”状态不再作为当前版本状态；真实节点、浏览器和干净系统验收不得由单元测试替代。
+
 - 版本：V1
 - 状态：M1–M5 基础代码已提交；Windows CI 与真实节点验收中
 - 目标平台：Windows x64

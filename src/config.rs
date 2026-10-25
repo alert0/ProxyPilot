@@ -18,7 +18,7 @@ impl std::fmt::Display for ConfigError {
         match self {
             Self::NoEnabledNodes => f.write_str("没有启用的节点可生成配置"),
             Self::DuplicatePort(port) => write!(f, "本地监听端口 {port} 重复"),
-            Self::InvalidPort(port) => write!(f, "本地监听端口 {port} 不在允许范围 18001–18010"),
+            Self::InvalidPort(port) => write!(f, "本地监听端口 {port} 必须在 1–65535 范围内"),
             Self::MissingSecret(id) => write!(f, "节点 {id} 的凭据不可用，请重新导入该节点"),
             Self::UnsupportedParameters(id, names) => write!(
                 f,
@@ -55,7 +55,7 @@ pub fn generate_config(
     let mut rules = Vec::with_capacity(enabled.len());
 
     for node in enabled {
-        if !(18001..=18010).contains(&node.listen_port) {
+        if node.listen_port == 0 {
             return Err(ConfigError::InvalidPort(node.listen_port));
         }
         if !ports.insert(node.listen_port) {
@@ -139,6 +139,9 @@ pub fn generate_config(
 /// Ensure every local SOCKS inbound has exactly one explicit route to one unique
 /// outbound. Selector/urltest groups and implicit fallback routing are rejected.
 pub fn validate_route_isolation(config: &Value) -> Result<(), ConfigError> {
+    if config["route"].get("final").is_some() {
+        return Err(ConfigError::InvalidRouteIsolation("禁止兜底出站".into()));
+    }
     let inbounds = config["inbounds"]
         .as_array()
         .ok_or_else(|| ConfigError::InvalidRouteIsolation("缺少 inbounds".to_owned()))?;
@@ -157,6 +160,11 @@ pub fn validate_route_isolation(config: &Value) -> Result<(), ConfigError> {
 
     let mut inbound_tags = HashSet::new();
     for inbound in inbounds {
+        if inbound["type"] != "socks" {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "仅允许 SOCKS 入口".into(),
+            ));
+        }
         let tag = inbound["tag"]
             .as_str()
             .ok_or_else(|| ConfigError::InvalidRouteIsolation("入口缺少 tag".to_owned()))?;
@@ -174,6 +182,11 @@ pub fn validate_route_isolation(config: &Value) -> Result<(), ConfigError> {
 
     let mut outbound_tags = HashSet::new();
     for outbound in outbounds {
+        if outbound["type"] != "hysteria2" {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "每个出站必须是固定 HY2 节点".into(),
+            ));
+        }
         let tag = outbound["tag"]
             .as_str()
             .ok_or_else(|| ConfigError::InvalidRouteIsolation("出站缺少 tag".to_owned()))?;
@@ -192,6 +205,15 @@ pub fn validate_route_isolation(config: &Value) -> Result<(), ConfigError> {
     let mut used_inbounds = HashSet::new();
     let mut used_outbounds = HashSet::new();
     for rule in rules {
+        if rule.as_object().is_none_or(|object| {
+            object
+                .keys()
+                .any(|key| !matches!(key.as_str(), "inbound" | "outbound" | "action"))
+        }) {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "入口映射禁止附加条件或隐式路由".into(),
+            ));
+        }
         if rule["action"] != "route" {
             return Err(ConfigError::InvalidRouteIsolation(
                 "所有入口规则必须显式使用 route action".to_owned(),
@@ -325,6 +347,21 @@ mod tests {
             generate_config(&[disabled], secret).unwrap_err(),
             ConfigError::NoEnabledNodes
         );
+    }
+
+    #[test]
+    fn rejects_route_conditions_direct_outbound_and_fallback() {
+        let config = generate_config(&[node(0, 24567)], secret).unwrap();
+        assert_eq!(config["inbounds"][0]["listen_port"], 24567);
+        for variant in [0, 1, 2] {
+            let mut unsafe_config = config.clone();
+            match variant {
+                0 => unsafe_config["route"]["final"] = json!("out-node-0"),
+                1 => unsafe_config["route"]["rules"][0]["domain"] = json!(["example.com"]),
+                _ => unsafe_config["outbounds"][0]["type"] = json!("direct"),
+            }
+            assert!(validate_route_isolation(&unsafe_config).is_err());
+        }
     }
 
     #[test]

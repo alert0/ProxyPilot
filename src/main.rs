@@ -1,386 +1,491 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use proxypilot::{
     config::generate_config,
-    diagnostics::{append_history, test_egress_ip, test_remote_dns_path, DiagnosticRecord},
+    core, diagnostics,
     nodes::NodeStore,
     runtime::RuntimeManager,
+    settings::{self, Settings},
 };
 use slint::{ModelRc, SharedString, VecModel};
-use std::{cell::RefCell, fs, rc::Rc};
-
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 slint::include_modules!();
-
-fn refresh_node_rows(app: &MainWindow, store: &Option<NodeStore>) {
-    let rows: Vec<SharedString> = store
-        .as_ref()
-        .map(|store| {
-            store
-                .nodes()
-                .iter()
-                .map(|node| {
-                    let state = if node.enabled { "启用" } else { "停用" };
-                    format!(
-                        "{state}  ·  {}:{}  ·  {}  ·  {}:{}{}",
-                        node.profile_name,
-                        node.listen_port,
-                        node.name,
-                        node.server,
-                        node.server_port,
-                        node.sni
-                            .as_ref()
-                            .map(|sni| format!("  ·  SNI {sni}"))
-                            .unwrap_or_default()
-                    )
-                    .into()
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    app.set_node_count_text(rows.len().to_string().into());
-    app.set_node_rows(ModelRc::new(VecModel::from(rows)));
+struct State {
+    store: NodeStore,
+    runtime: RuntimeManager,
+    settings: Settings,
 }
-
-fn main() -> Result<(), slint::PlatformError> {
-    let app = MainWindow::new()?;
-    let store = Rc::new(RefCell::new(NodeStore::open_default().ok()));
-    let runtime = Rc::new(RefCell::new(RuntimeManager::new().ok()));
-
-    if store.borrow().is_none() {
-        app.set_status_message(
-            "本地节点存储初始化失败。请检查 Windows 用户配置目录与凭据管理器权限。".into(),
-        );
-    } else {
-        refresh_node_rows(&app, &store.borrow());
-    }
-    if runtime.borrow().is_none() {
-        app.set_core_path("运行时初始化失败".into());
-    }
-
-    app.on_navigate(|page| {
-        let _ = page;
-    });
-
-    app.on_import_links({
-        let app_weak = app.as_weak();
-        let store = Rc::clone(&store);
-        move |input| {
-            let summary = {
-                let mut guard = store.borrow_mut();
-                guard
-                    .as_mut()
-                    .map(|store| store.import_text(input.as_str()))
-            };
-
-            let Some(summary) = summary else {
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_status_message(
-                        "本地节点存储不可用，无法导入。请检查应用数据目录与 Windows 凭据管理器。"
-                            .into(),
-                    );
-                }
-                return;
-            };
-
-            let mut message = format!(
-                "导入完成：新增 {}，重复 {}，警告 {}。",
-                summary.added.len(),
-                summary.duplicates,
-                summary.warning_count
-            );
-            if summary.limit_reached {
-                message.push_str(" 已达到最多 10 个节点的限制。");
-            }
-            if !summary.errors.is_empty() {
-                message.push_str(" 错误：");
-                message.push_str(&summary.errors.join("；"));
-            }
-            if let Some(app) = app_weak.upgrade() {
-                app.set_status_message(message.into());
-                refresh_node_rows(&app, &store.borrow());
-            }
-        }
-    });
-
-    app.on_select_node({
-        let app_weak = app.as_weak();
-        let store = Rc::clone(&store);
-        move |index| {
-            if index < 0 {
-                return;
-            }
-            let name = store
-                .borrow()
-                .as_ref()
-                .and_then(|store| store.nodes().get(index as usize))
-                .map(|node| node.name.clone());
-            if let (Some(app), Some(name)) = (app_weak.upgrade(), name) {
-                app.set_selected_node(index);
-                app.set_rename_input(name.into());
-                app.set_status_message("已选择节点。重命名只修改本地显示名称。".into());
-            }
-        }
-    });
-
-    app.on_rename_node({
-        let app_weak = app.as_weak();
-        let store = Rc::clone(&store);
-        move |index, name| {
-            if index < 0 {
-                return;
-            }
-            let result = {
-                let mut guard = store.borrow_mut();
-                match guard.as_mut() {
-                    Some(store) => store
-                        .nodes()
-                        .get(index as usize)
-                        .map(|node| node.id.clone())
-                        .ok_or_else(|| "找不到所选节点".to_owned())
-                        .and_then(|id| store.rename(&id, name.as_str())),
-                    None => Err("本地节点存储不可用".to_owned()),
-                }
-            };
-            if let Some(app) = app_weak.upgrade() {
-                match result {
-                    Ok(()) => app.set_status_message("节点名称已保存。".into()),
-                    Err(error) => app.set_status_message(error.into()),
-                }
-                refresh_node_rows(&app, &store.borrow());
-            }
-        }
-    });
-
-    app.on_node_action({
-        let app_weak = app.as_weak();
-        let store = Rc::clone(&store);
-        move |index, action| {
-            if index < 0 {
-                return;
-            }
-            let result = {
-                let mut guard = store.borrow_mut();
-                match guard.as_mut() {
-                    Some(store) => {
-                        let selected = store.nodes().get(index as usize).cloned();
-                        match selected {
-                            None => Err("找不到所选节点".to_owned()),
-                            Some(node) if action == "toggle" => {
-                                store.set_enabled(&node.id, !node.enabled)
-                            }
-                            Some(node) if action == "delete" => store.delete(&node.id),
-                            _ => Err("不支持的节点操作".to_owned()),
-                        }
-                    }
-                    None => Err("本地节点存储不可用".to_owned()),
-                }
-            };
-            if let Some(app) = app_weak.upgrade() {
-                match result {
-                    Ok(()) => {
-                        app.set_status_message(if action == "delete" {
-                            "节点已删除；本地凭据也已请求删除。".into()
+type SharedState = Arc<Mutex<State>>;
+fn model(rows: Vec<String>) -> ModelRc<SharedString> {
+    ModelRc::new(VecModel::from(
+        rows.into_iter().map(SharedString::from).collect::<Vec<_>>(),
+    ))
+}
+fn refresh(app: &MainWindow, state: &mut State) {
+    let running = state.runtime.is_running();
+    app.set_core_running(running);
+    app.set_runtime_status(state.runtime.status.clone().into());
+    app.set_core_path(
+        state
+            .runtime
+            .core_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "尚未选择核心".into())
+            .into(),
+    );
+    app.set_core_version(state.runtime.version().unwrap_or("未验证").into());
+    app.set_node_count_text(state.store.nodes().len().to_string().into());
+    app.set_node_rows(model(
+        state
+            .store
+            .nodes()
+            .iter()
+            .map(|n| {
+                format!(
+                    "{} · {} · {} · 127.0.0.1:{} → {}:{} · SNI {} · TLS {} · 混淆 {}{} · 监听 {}",
+                    if n.enabled { "启用" } else { "停用" },
+                    n.name,
+                    n.profile_name,
+                    n.listen_port,
+                    n.server,
+                    n.server_port,
+                    n.sni.as_deref().unwrap_or("默认"),
+                    if n.insecure {
+                        "跳过证书校验"
+                    } else {
+                        "校验证书"
+                    },
+                    n.obfs_type.as_deref().unwrap_or("无"),
+                    if n.warnings.is_empty() {
+                        ""
+                    } else {
+                        " · 参数待检查，禁止启动"
+                    },
+                    if running && n.enabled {
+                        if diagnostics::listener_available(n.listen_port) {
+                            "可用"
                         } else {
-                            "节点启用状态已更新。".into()
-                        });
-                        if action == "delete" {
-                            app.set_selected_node(-1);
-                            app.set_rename_input("".into());
+                            "不可用"
                         }
-                    }
-                    Err(error) => app.set_status_message(error.into()),
-                }
-                refresh_node_rows(&app, &store.borrow());
-            }
-        }
-    });
-
-    app.on_choose_import_file({
-        let app_weak = app.as_weak();
-        move || {
-            let Some(path) = rfd::FileDialog::new()
-                .add_filter("HY2 text files", &["txt"])
-                .set_title("选择包含 HY2 分享链接的文本文件")
-                .pick_file()
-            else {
-                return;
-            };
-            let result = fs::metadata(&path)
-                .map_err(|_| "无法读取所选文件信息".to_owned())
-                .and_then(|metadata| {
-                    if metadata.len() > 1_048_576 {
-                        Err("文本文件超过 1 MiB 限制".to_owned())
                     } else {
-                        fs::read_to_string(&path)
-                            .map_err(|_| "文件不是有效 UTF-8 文本或无法读取".to_owned())
+                        "未启动"
                     }
-                });
-            if let Some(app) = app_weak.upgrade() {
-                match result {
-                    Ok(text) => {
-                        app.set_link_input(text.into());
-                        app.set_status_message(
-                            "文件内容已加载到本地输入框；请点击“解析并预览”确认导入。".into(),
-                        );
-                    }
-                    Err(error) => app.set_status_message(error.into()),
-                }
-            }
+                )
+            })
+            .collect(),
+    ));
+    let history = diagnostics::read_history().unwrap_or_default();
+    let mut latest = std::collections::HashMap::new();
+    for row in &history {
+        if row.kind == "egress_ip" {
+            latest.insert(row.port, row);
         }
+    }
+    latest.retain(|port, _| {
+        state
+            .store
+            .nodes()
+            .iter()
+            .any(|n| n.enabled && n.listen_port == *port)
     });
-
-    app.on_choose_core({
-        let app_weak = app.as_weak();
-        let runtime = Rc::clone(&runtime);
-        move || {
-            let Some(path) = rfd::FileDialog::new()
-                .add_filter("sing-box executable", &["exe"])
-                .set_title("选择 sing-box.exe")
-                .pick_file()
-            else {
-                return;
-            };
-            let result = runtime
-                .borrow_mut()
-                .as_mut()
-                .ok_or_else(|| "运行时初始化失败".to_owned())
-                .and_then(|runtime| runtime.choose_core(path.clone()));
-            if let Some(app) = app_weak.upgrade() {
-                match result {
-                    Ok(version) => {
-                        app.set_core_path(path.display().to_string().into());
-                        app.set_status_message(format!("已验证核心：{version}").into());
-                    }
-                    Err(error) => app.set_status_message(error.into()),
-                }
-            }
-        }
-    });
-
-    app.on_action_requested({
-        let app_weak = app.as_weak();
-        let store = Rc::clone(&store);
-        let runtime = Rc::clone(&runtime);
-        move |action| {
-            let message = match action.as_str() {
-                "import" => "粘贴 HY2 分享链接（每行一条）或 Base64 链接列表，再点击“解析并预览”。".to_owned(),
-                "config" => {
-                    let guard = store.borrow();
-                    match guard.as_ref() {
-                        Some(store) => match generate_config(store.nodes(), |id| store.secret_for(id)) {
-                            Ok(config) => format!(
-                                "配置预览成功：{} 个 SOCKS5 入口、{} 个 HY2 出站、{} 条显式路由。尚未调用 sing-box check，也未启动核心。",
-                                config["inbounds"].as_array().map_or(0, Vec::len),
-                                config["outbounds"].as_array().map_or(0, Vec::len),
-                                config["route"]["rules"].as_array().map_or(0, Vec::len)
-                            ),
-                            Err(error) => format!("无法生成配置预览：{error}"),
-                        },
-                        None => "本地节点存储不可用，无法生成配置预览。".to_owned(),
-                    }
-                }
-                "start" => {
-                    let guard = store.borrow();
-                    let mut runtime_guard = runtime.borrow_mut();
-                    match (guard.as_ref(), runtime_guard.as_mut()) {
-                        (Some(store), Some(runtime)) => runtime.start(store).unwrap_or_else(|error| error),
-                        _ => "节点存储或核心运行时不可用。".to_owned(),
-                    }
-                }
-                "stop" => runtime
-                    .borrow_mut()
-                    .as_mut()
-                    .map(|runtime| runtime.stop().unwrap_or_else(|error| error))
-                    .unwrap_or_else(|| "核心运行时不可用。".to_owned()),
-                "test" => {
-                    let ports: Vec<u16> = store
-                        .borrow()
-                        .as_ref()
-                        .map(|store| {
-                            store
-                                .nodes()
-                                .iter()
-                                .filter(|node| node.enabled)
-                                .map(|node| node.listen_port)
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    if ports.is_empty() {
-                        "没有启用的节点可测试。".to_owned()
-                    } else {
-                        let weak = app_weak.clone();
-                        std::thread::spawn(move || {
-                            let mut lines = Vec::new();
-                            let mut history = Vec::new();
-                            for port in ports {
-                                let result = test_egress_ip(port);
-                                history.push(DiagnosticRecord::from(result.clone()));
-                                let ip = result
-                                    .egress_ip
-                                    .map(|ip| ip.to_string())
-                                    .unwrap_or_else(|| "失败".to_owned());
-                                lines.push(format!(
-                                    "端口 {}：{}（{} ms，{}）",
-                                    result.port, ip, result.elapsed_ms, result.message
-                                ));
-                            }
-                            let saved = append_history(&history).map(|_| "测试记录已保存".to_owned())
-                                .unwrap_or_else(|_| "测试结果已完成，但历史记录保存失败".to_owned());
-                            let summary = format!("出口 IP 测试完成：{}。{}", lines.join("；"), saved);
-                            let _ = slint::invoke_from_event_loop(move || {
-                                if let Some(app) = weak.upgrade() {
-                                    app.set_status_message(summary.into());
-                                }
-                            });
-                        });
-                        "已在后台启动出口 IP 测试；结果会显示在此处。".to_owned()
-                    }
-                }
-                "dns" => {
-                    let ports: Vec<u16> = store
-                        .borrow()
-                        .as_ref()
-                        .map(|store| {
-                            store
-                                .nodes()
-                                .iter()
-                                .filter(|node| node.enabled)
-                                .map(|node| node.listen_port)
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    if ports.is_empty() {
-                        "没有启用的节点可进行 DNS 路径诊断。".to_owned()
-                    } else {
-                        let weak = app_weak.clone();
-                        std::thread::spawn(move || {
-                            let mut lines = Vec::new();
-                            let mut history = Vec::new();
-                            for port in ports {
-                                let result = test_remote_dns_path(port);
-                                history.push(DiagnosticRecord::from(result.clone()));
-                                lines.push(format!(
-                                    "端口 {}：HTTP {:?}（{} ms，{}）",
-                                    result.port, result.http_status, result.elapsed_ms, result.message
-                                ));
-                            }
-                            let saved = append_history(&history).map(|_| "测试记录已保存".to_owned())
-                                .unwrap_or_else(|_| "测试结果已完成，但历史记录保存失败".to_owned());
-                            let summary = format!("DNS 路径诊断完成：{}。{}", lines.join("；"), saved);
-                            let _ = slint::invoke_from_event_loop(move || {
-                                if let Some(app) = weak.upgrade() {
-                                    app.set_status_message(summary.into());
-                                }
-                            });
-                        });
-                        "已在后台启动 DNS 路径诊断。注意：这不是浏览器 DNS/WebRTC 无泄漏证明。".to_owned()
-                    }
-                },
-                _ => "该功能将在对应开发阶段接入。".to_owned(),
-            };
-            if let Some(app) = app_weak.upgrade() {
+    app.set_success_count(
+        latest
+            .values()
+            .filter(|r| r.success)
+            .count()
+            .to_string()
+            .into(),
+    );
+    app.set_failure_count(
+        latest
+            .values()
+            .filter(|r| !r.success)
+            .count()
+            .to_string()
+            .into(),
+    );
+    app.set_diagnostic_rows(model(
+        history
+            .iter()
+            .rev()
+            .take(100)
+            .map(|r| {
+                format!(
+                    "{} · {} · 端口 {} · {} · {} ms · {} {} · 服务 {}",
+                    r.checked_at_unix,
+                    r.kind,
+                    r.port,
+                    if r.success { "成功" } else { "失败" },
+                    r.elapsed_ms,
+                    r.egress_ip.as_deref().unwrap_or(""),
+                    r.message,
+                    r.service.as_deref().unwrap_or("历史记录未标记")
+                )
+            })
+            .collect(),
+    ));
+    app.set_log_rows(model(
+        settings::read_logs()
+            .iter()
+            .rev()
+            .map(|r| format!("{} · {}", r.at, r.event))
+            .collect(),
+    ));
+}
+fn work(
+    app: &MainWindow,
+    state: &SharedState,
+    action: impl FnOnce(&mut State) -> Result<String, String> + Send + 'static,
+) {
+    if app.get_busy() {
+        return;
+    }
+    app.set_busy(true);
+    app.set_status_message("正在处理…".into());
+    let state = Arc::clone(state);
+    let weak = app.as_weak();
+    std::thread::spawn(move || {
+        let result = match state.lock() {
+            Ok(mut state) => action(&mut state),
+            Err(_) => Err("应用状态不可用，请重启".into()),
+        };
+        let success = result.is_ok();
+        let message = result.unwrap_or_else(|e| e);
+        settings::log(if success {
+            "操作完成"
+        } else {
+            "操作失败，请查看界面错误信息"
+        });
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_busy(false);
                 app.set_status_message(message.into());
+                if let Ok(mut state) = state.lock() {
+                    refresh(&app, &mut state);
+                }
+            }
+        });
+    });
+}
+fn selected(state: &State, index: i32) -> Result<proxypilot::nodes::NodeRecord, String> {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| state.store.nodes().get(i))
+        .cloned()
+        .ok_or_else(|| "请先选择一个节点".into())
+}
+fn stopped(state: &mut State) -> Result<(), String> {
+    if state.runtime.is_running() {
+        Err("请先停止核心再修改节点、映射或恢复备份".into())
+    } else {
+        Ok(())
+    }
+}
+fn confirm(title: &str, description: &str) -> bool {
+    rfd::MessageDialog::new()
+        .set_title(title)
+        .set_description(description)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes
+}
+fn main() -> Result<(), slint::PlatformError> {
+    let _instance_lock = match settings::instance_lock() {
+        Ok(lock) => lock,
+        Err(error) => {
+            rfd::MessageDialog::new()
+                .set_title("ProxyPilot")
+                .set_description(error)
+                .show();
+            return Ok(());
+        }
+    };
+    let app = MainWindow::new()?;
+    let initial = (|| -> Result<State, String> {
+        let settings = Settings::load()?;
+        let store = NodeStore::open_default()?;
+        let mut runtime = RuntimeManager::new()?;
+        if let Some(path) = &settings.core_path {
+            let verified = settings
+                .core_sha256
+                .as_deref()
+                .map(|hash| core::verify_hash(path, hash).map(|_| ()))
+                .unwrap_or(Ok(()));
+            if let Err(error) = verified.and_then(|_| runtime.choose_core(path.clone()).map(|_| ()))
+            {
+                runtime.status = error;
+            }
+        }
+        Ok(State {
+            store,
+            runtime,
+            settings,
+        })
+    })();
+    let mut initial = match initial {
+        Ok(s) => s,
+        Err(error) => {
+            rfd::MessageDialog::new()
+                .set_title("初始化失败")
+                .set_description(error)
+                .show();
+            return Ok(());
+        }
+    };
+    app.set_ip_url(initial.settings.ip_url.clone().into());
+    app.set_dns_url(initial.settings.dns_url.clone().into());
+    app.set_concurrency(initial.settings.concurrency.to_string().into());
+    app.set_timeout_seconds(initial.settings.timeout_seconds.to_string().into());
+    refresh(&app, &mut initial);
+    let state = Arc::new(Mutex::new(initial));
+    settings::log("ProxyPilot 启动");
+    app.on_navigate({
+        let weak = app.as_weak();
+        move |page| {
+            if let Some(app) = weak.upgrade() {
+                app.set_current_page(page);
             }
         }
     });
-
+    app.on_select_node({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move |index| {
+            if let (Some(app), Ok(state)) = (weak.upgrade(), state.try_lock()) {
+                if let Ok(node) = selected(&state, index) {
+                    app.set_selected_node(index);
+                    app.set_rename_input(node.name.into());
+                    app.set_profile_input(node.profile_name.into());
+                    app.set_port_input(node.listen_port.to_string().into());
+                }
+            }
+        }
+    });
+    app.on_import_links({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move |text| {
+            if let Some(app) = weak.upgrade() {
+                let text = text.to_string();
+                work(&app, &state, move |state| {
+                    stopped(state)?;
+                    if text.len() > 1_048_576 {
+                        return Err("导入内容超过 1 MiB".into());
+                    }
+                    let result = state.store.import_text(&text);
+                    Ok(format!(
+                        "新增 {}，重复 {}，警告 {}{}\n{}",
+                        result.added.len(),
+                        result.duplicates,
+                        result.warning_count,
+                        if result.limit_reached {
+                            "，已达 10 节点上限"
+                        } else {
+                            ""
+                        },
+                        result.errors.join("\n")
+                    ))
+                });
+                app.set_link_input("".into());
+            }
+        }
+    });
+    app.on_choose_import_file({
+        let weak = app.as_weak();
+        move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("UTF-8 文本", &["txt"])
+                .pick_file()
+            {
+                let result = std::fs::metadata(&path)
+                    .map_err(|_| "无法读取文件")
+                    .and_then(|m| {
+                        if m.len() > 1_048_576 {
+                            Err("文件超过 1 MiB")
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .and_then(|_| std::fs::read_to_string(path).map_err(|_| "文件不是有效 UTF-8"));
+                if let Some(app) = weak.upgrade() {
+                    match result {
+                        Ok(text) => app.set_link_input(text.into()),
+                        Err(e) => app.set_status_message(e.into()),
+                    }
+                }
+            }
+        }
+    });
+    app.on_rename_node({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move |index, name| {
+            if let Some(app) = weak.upgrade() {
+                let name = name.to_string();
+                work(&app, &state, move |state| {
+                    stopped(state)?;
+                    let node = selected(state, index)?;
+                    state.store.rename(&node.id, &name)?;
+                    Ok("名称已保存".into())
+                });
+            }
+        }
+    });
+    app.on_save_mapping({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move |index, profile, port| {
+            if let Some(app) = weak.upgrade() {
+                let profile = profile.to_string();
+                let port = port.to_string();
+                work(&app, &state, move |state| {
+                    stopped(state)?;
+                    let node = selected(state, index)?;
+                    let port = port.trim().parse::<u16>().map_err(|_| "端口须为 1–65535")?;
+                    state.store.set_mapping(&node.id, &profile, port)?;
+                    Ok("Profile 与监听端口已保存".into())
+                });
+            }
+        }
+    });
+    app.on_node_action({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move |index, action| {
+            if let Some(app) = weak.upgrade() {
+                if action == "delete" && !confirm("删除节点", "删除所选节点及其本地凭据？")
+                {
+                    return;
+                }
+                let action = action.to_string();
+                work(&app, &state, move |state| {
+                    stopped(state)?;
+                    let node = selected(state, index)?;
+                    match action.as_str() {
+                        "delete" => state.store.delete(&node.id)?,
+                        "toggle" => state.store.set_enabled(&node.id, !node.enabled)?,
+                        _ => return Err("不支持的操作".into()),
+                    }
+                    Ok("节点已更新".into())
+                });
+                app.set_selected_node(-1);
+            }
+        }
+    });
+    app.on_choose_core({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move || {
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter("sing-box", &["exe"])
+                .pick_file()
+            else {
+                return;
+            };
+            if let Some(app) = weak.upgrade() {
+                let expected = app.get_expected_hash().to_string();
+                work(&app, &state, move |state| {
+                    select_core(state, path, &expected)
+                });
+            }
+        }
+    });
+    app.on_save_settings({
+        let weak = app.as_weak();
+        let state = Arc::clone(&state);
+        move |ip, dns, concurrency, timeout| {
+            if let Some(app) = weak.upgrade() {
+                work(&app, &state, move |state| {
+                    let next = Settings {
+                        core_path: state.settings.core_path.clone(),
+                        core_sha256: state.settings.core_sha256.clone(),
+                        ip_url: ip.to_string(),
+                        dns_url: dns.to_string(),
+                        concurrency: concurrency.parse().map_err(|_| "并发数无效")?,
+                        timeout_seconds: timeout.parse().map_err(|_| "超时无效")?,
+                    };
+                    next.save()?;
+                    state.settings = next;
+                    Ok("设置已保存".into())
+                });
+            }
+        }
+    });
+    app.on_action_requested({ let weak = app.as_weak(); let state = Arc::clone(&state); move |action| {
+        let Some(app) = weak.upgrade() else { return; }; let index = app.get_selected_node();
+        let path = match action.as_str() {
+            "backup" | "export" => rfd::FileDialog::new().add_filter("JSON", &["json"]).set_file_name(if action == "backup" { "ProxyPilot-metadata.json" } else { "ProxyPilot-diagnostics.json" }).save_file(),
+            "restore" => { if !confirm("恢复节点清单", "恢复会替换节点元数据，并先备份当前清单。备份不包含密码；跨电脑恢复后须重新导入链接。继续？") { return; } rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() },
+            "isolation" => { if !confirm("故障隔离测试", "将测试基线，重启应用管理的核心，把所选出站临时指向本机无服务端口，测试其他出站，最后恢复原配置。所有入口会短暂中断。不修改防火墙或系统代理。继续？") { return; } None },
+            _ => None,
+        };
+        if matches!(action.as_str(),"backup"|"restore"|"export") && path.is_none() { return; }
+        let action = action.to_string(); work(&app,&state,move |state| match action.as_str() {
+            "start" => state.runtime.start(&state.store), "stop" => state.runtime.stop(), "restart" => state.runtime.restart(&state.store),
+            "config" | "check" => {
+                let config = generate_config(state.store.nodes(),|id| state.store.secret_for(id)).map_err(|e| e.to_string())?;
+                if action == "check" { stopped(state)?; state.runtime.check_only(&config)?; }
+                Ok(format!("{}：{} 个入口、{} 个出站，一对一显式路由校验通过", if action == "check" { "sing-box check 通过" } else { "内存配置预览" }, config["inbounds"].as_array().map_or(0,Vec::len), config["outbounds"].as_array().map_or(0,Vec::len)))
+            }
+            "download" => { stopped(state)?; let path = core::download_official()?; select_core(state,path,"") },
+            "test" | "dns" => {
+                if !state.runtime.is_running() { return Err("请先启动核心，避免误测其他程序的端口".into()); }
+                let ports: Vec<_> = state.store.nodes().iter().filter(|n| n.enabled).map(|n| n.listen_port).collect();
+                let results = diagnostics::batch(&ports,action == "dns",&state.settings); diagnostics::append_history(&results)?;
+                Ok(format!("诊断完成：{} / {} 成功，详情见诊断页面", results.iter().filter(|r| r.success).count(), results.len()))
+            }
+            "isolation" => { let node = selected(state,index)?; let results = state.runtime.isolation_test(&node.id,node.listen_port,&state.settings)?;
+                let passed = results.iter().filter(|r| r.kind == "isolation_fault").all(|r| if r.port == node.listen_port { !r.success } else { r.success }) && results.iter().filter(|r| r.kind == "isolation_recovery").all(|r| r.success);
+                Ok(format!("故障隔离{}，原配置已恢复。详情见诊断记录。",if passed { "通过" } else { "未通过" }))
+            }
+            "backup" => { state.store.backup(&path.unwrap())?; Ok("元数据备份完成，不包含密码。".into()) },
+            "restore" => { stopped(state)?; state.store.backup(&settings::data_dir()?.join("before-restore.json"))?; state.store.restore(&path.unwrap())?; Ok("元数据已恢复，缺少本机凭据时请重新导入链接。".into()) },
+            "export" => { settings::write_json(&path.unwrap(),&diagnostics::read_history()?)?; Ok("诊断报告已导出，包含端口和出口 IP，不含分享链接或凭据。".into()) },
+            "refresh" => Ok("状态与历史已刷新".into()), _ => Err("未知操作".into()),
+        });
+    }});
+    let timer = slint::Timer::default();
+    timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_secs(2),
+        {
+            let weak = app.as_weak();
+            let state = Arc::clone(&state);
+            move || {
+                if let (Some(app), Ok(mut state)) = (weak.upgrade(), state.try_lock()) {
+                    if !app.get_busy() {
+                        refresh(&app, &mut state);
+                    }
+                }
+            }
+        },
+    );
+    app.window().on_close_requested({
+        let weak = app.as_weak();
+        move || {
+            if let Some(app) = weak.upgrade() {
+                if app.get_busy() {
+                    app.set_status_message(
+                        "正在执行操作，请等待完成后关闭，以便清理核心与临时配置。".into(),
+                    );
+                    return slint::CloseRequestResponse::KeepWindowShown;
+                }
+            }
+            slint::CloseRequestResponse::HideWindow
+        }
+    });
     app.run()
+}
+fn select_core(state: &mut State, path: PathBuf, expected: &str) -> Result<String, String> {
+    if !expected.trim().is_empty() {
+        core::verify_hash(&path, expected.trim())?;
+    }
+    let version = state.runtime.choose_core(path.clone())?;
+    let hash = core::sha256(&path)?;
+    state.settings.core_path = Some(path);
+    state.settings.core_sha256 = Some(hash.clone());
+    state.settings.save()?;
+    Ok(format!("核心已选择：{version}\nSHA-256: {hash}"))
 }

@@ -1,252 +1,188 @@
-import { Button, VerticalBox, HorizontalBox, TextEdit, LineEdit } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, TextEdit, LineEdit, ScrollView } from "std-widgets.slint";
 
+component Panel inherits Rectangle {
+    vertical-stretch: 0;
+    background: white;
+    border-color: #e1e7ef;
+    border-width: 1px;
+    border-radius: 10px;
+    VerticalBox { padding: 18px; spacing: 12px; alignment: start; @children }
+}
+component Label inherits Text {
+    color: #34445c;
+    font-size: 13px;
+    wrap: word-wrap;
+}
 export component MainWindow inherits Window {
     title: "ProxyPilot";
-    width: 1120px;
-    height: 760px;
-    background: #f4f6fa;
-
-    in-out property <string> status_message: "M1：粘贴 HY2 分享链接或 Base64 内容可进行本地解析预览。";
-    in-out property <string> link_input: "";
-    in-out property <[string]> node_rows: [];
-    in-out property <int> selected_node: -1;
-    in-out property <string> rename_input: "";
-    in-out property <string> node_count_text: "0";
-    in-out property <string> core_path: "尚未选择 sing-box.exe";
-    callback import_links(string);
-    callback node_action(int, string);
-    callback select_node(int);
-    callback rename_node(int, string);
-    callback choose_core();
-    callback choose_import_file();
+    preferred-width: 1180px; preferred-height: 820px;
+    min-width: 960px; min-height: 650px;
+    background: #f3f6fa;
+    in-out property <string> current-page: "运行概览";
+    in-out property <string> status-message: "就绪。导入节点、选择核心后即可启动。";
+    in-out property <bool> busy: false;
+    in-out property <bool> core-running: false;
+    in-out property <string> runtime-status: "未启动";
+    in-out property <string> core-version: "未验证";
+    in-out property <string> core-path: "尚未选择核心";
+    in-out property <string> link-input;
+    in-out property <[string]> node-rows;
+    in-out property <[string]> diagnostic-rows;
+    in-out property <[string]> log-rows;
+    in-out property <int> selected-node: -1;
+    in-out property <string> rename-input;
+    in-out property <string> profile-input;
+    in-out property <string> port-input;
+    in-out property <string> node-count-text: "0";
+    in-out property <string> success-count: "0";
+    in-out property <string> failure-count: "0";
+    in-out property <string> ip-url;
+    in-out property <string> dns-url;
+    in-out property <string> concurrency;
+    in-out property <string> timeout-seconds;
+    in-out property <string> expected-hash;
     callback navigate(string);
-    callback action_requested(string);
+    callback import-links(string);
+    callback choose-import-file();
+    callback select-node(int);
+    callback node-action(int, string);
+    callback rename-node(int, string);
+    callback save-mapping(int, string, string);
+    callback choose-core();
+    callback save-settings(string, string, string, string);
+    callback action-requested(string);
 
     VerticalBox {
         spacing: 0px;
-
-        HorizontalBox {
-            height: 56px;
-            padding-left: 20px;
-            padding-right: 20px;
-            alignment: center;
-
-            Rectangle {
-                width: 30px;
-                height: 30px;
-                background: #2868bc;
-                border-radius: 8px;
-                Text {
-                    text: "P";
-                    color: white;
-                    font-size: 18px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+        Rectangle {
+            height: 68px; background: #162337;
+            HorizontalBox {
+                padding: 20px; alignment: center;
+                Text { text: "P  /  ProxyPilot"; color: white; font-size: 23px; font-weight: 700; }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: root.busy ? "处理中…" : root.runtime-status; color: root.core-running ? #83deb0 : #c0cbd9; font-size: 14px; }
             }
-
-            VerticalBox {
-                padding-left: 10px;
-                alignment: center;
-                spacing: 1px;
-                Text { text: "ProxyPilot"; color: #f4f7fc; font-size: 17px; font-weight: 700; }
-                Text { text: "LOCAL PROXY CONTROL"; color: #8c9bb0; font-size: 9px; }
-            }
-
-            Rectangle { horizontal-stretch: 1; }
-
-            Text { text: "Windows Desktop  ·  M1–M5 验收中"; color: #aab5c5; font-size: 11px; }
         }
-
         HorizontalBox {
             spacing: 0px;
-
-            VerticalBox {
-                width: 205px;
-                padding: 14px;
-                spacing: 7px;
-
-                Text { text: "工作空间"; color: #7f8da1; font-size: 10px; }
-
-                for item[index] in ["运行概览", "代理节点", "端口映射", "诊断与验收", "运行日志", "设置"]: Button {
-                    text: item;
-                    height: 38px;
-                    horizontal-stretch: 1;
-                    clicked => { root.navigate(item); }
-                }
-
-                Rectangle { vertical-stretch: 1; }
-
-                Rectangle {
-                    background: #202b3a;
-                    border-radius: 8px;
-                    height: 76px;
-                    VerticalBox {
-                        spacing: 5px;
-                        Text { text: "sing-box 核心"; color: #e5ebf4; font-size: 12px; font-weight: 600; }
-                        Text { text: "按需选择 / 未启动"; color: #a3afc0; font-size: 10px; }
-                        Text { text: "节点管理与运行时开发中"; color: #e0bd77; font-size: 10px; }
+            Rectangle {
+                width: 180px; background: #e9eef5;
+                VerticalBox {
+                    padding: 14px; spacing: 10px;
+                    for page in ["运行概览", "代理节点", "端口映射", "诊断与验收", "运行日志", "设置"]: Button {
+                        text: page; height: 40px;
+                        clicked => { root.navigate(page); }
                     }
+                    Rectangle { vertical-stretch: 1; }
+                    Label { text: "每个入口\n一个固定出站\n\n仅监听本机\n不修改系统代理"; color: #6f7f95; }
                 }
             }
-
             VerticalBox {
-                padding: 24px;
-                spacing: 16px;
-
+                padding: 20px; spacing: 16px;
                 HorizontalBox {
-                    alignment: center;
-                    Text { text: "代理节点"; color: #202b3c; font-size: 25px; font-weight: 700; }
+                    Text { text: root.current-page; color: #23334b; font-size: 26px; font-weight: 700; }
                     Rectangle { horizontal-stretch: 1; }
-                    Button { text: "导入节点"; clicked => { root.action_requested("import"); } }
+                    Button { text: "刷新"; enabled: !root.busy; clicked => { root.action-requested("refresh"); } }
                 }
-
                 Rectangle {
-                    background: #fff8e9;
-                    border-color: #f0dfb7;
-                    border-width: 1px;
-                    border-radius: 8px;
-                    HorizontalBox {
-                        padding: 12px;
-                        spacing: 10px;
-                        Text { text: "提示"; color: #98712a; font-size: 12px; font-weight: 700; }
-                        Text {
-                            text: root.status_message;
-                            color: #866f4c;
-                            font-size: 11px;
-                            vertical-alignment: center;
-                            wrap: word-wrap;
-                            horizontal-stretch: 1;
-                        }
-                    }
+                    background: #fff7e5; border-radius: 8px; height: 100px;
+                    ScrollView { VerticalBox { padding: 12px; Label { text: root.status-message; color: #7f6024; } } }
                 }
-
-                Rectangle {
-                    background: white;
-                    border-color: #e5eaf1;
-                    border-width: 1px;
-                    border-radius: 9px;
+                ScrollView {
                     VerticalBox {
-                        padding: 14px;
-                        spacing: 8px;
-                        Text { text: "HY2 分享链接导入"; color: #293548; font-size: 14px; font-weight: 700; }
-                        Text { text: "支持 hy2://、hysteria2:// 链接（每行一条）或 Base64 链接列表。解析在本机执行；密码不会显示在结果中。"; color: #8995a6; font-size: 10px; }
-                        TextEdit {
-                            text <=> root.link_input;
-                            placeholder-text: "粘贴 hy2://、hysteria2:// 分享链接或 Base64 内容";
-                            height: 100px;
+                        spacing: 16px;
+                        alignment: start;
+                        if root.current-page == "运行概览": Panel {
+                            Text { text: "本地代理工作空间"; font-size: 22px; color: #21324a; font-weight: 700; }
+                            Label { text: "节点 " + root.node-count-text + " / 10     最近出口查询成功 " + root.success-count + "     最近失败 " + root.failure-count; }
+                            Label { text: "核心状态：" + root.runtime-status + "\n" + root.core-version + "\n" + root.core-path; }
+                            Label { text: "诊断统计来自历史查询，不代表当前连通状态。先导入节点，再选择或下载官方核心，最后启动并测试。"; }
+                            HorizontalBox {
+                                Button { text: "启动"; enabled: !root.busy && !root.core-running; clicked => { root.action-requested("start"); } }
+                                Button { text: "停止"; enabled: !root.busy && root.core-running; clicked => { root.action-requested("stop"); } }
+                                Button { text: "重启"; enabled: !root.busy && root.core-running; clicked => { root.action-requested("restart"); } }
+                            }
                         }
-                        HorizontalBox {
-                            alignment: end;
-                            Button {
-                                text: "导入文本文件";
-                                clicked => { root.choose_import_file(); }
+                        if root.current-page == "代理节点": Panel {
+                            Label { text: "粘贴 hy2://、hysteria2:// 链接（每行一条），或整段 Base64 链接列表。"; }
+                            TextEdit { text <=> root.link-input; height: 110px; enabled: !root.busy && !root.core-running; placeholder-text: "粘贴分享链接或 Base64 内容"; }
+                            HorizontalBox {
+                                Button { text: "读取文本文件"; enabled: !root.busy && !root.core-running; clicked => { root.choose-import-file(); } }
+                                Button { text: "解析并导入"; enabled: !root.busy && !root.core-running; clicked => { root.import-links(root.link-input); } }
                             }
-                            Button {
-                                text: "解析并预览";
-                                clicked => { root.import_links(root.link_input); }
+                            Label { text: "逐行错误在上方结果区显示；密码保存到 Windows 凭据管理器。"; }
+                        }
+                        if root.current-page == "代理节点" || root.current-page == "端口映射": Panel {
+                            Label { text: "节点清单（" + root.node-count-text + " / 10）。修改前请停止核心。"; }
+                            for row[index] in root.node-rows: VerticalBox {
+                                spacing: 6px;
+                                Label { text: (root.selected-node == index ? "● " : "") + row; }
+                                HorizontalBox {
+                                    Button { text: "选择"; enabled: !root.busy; clicked => { root.select-node(index); } }
+                                    Button { text: "启用 / 停用"; enabled: !root.busy && !root.core-running; clicked => { root.node-action(index, "toggle"); } }
+                                    Button { text: "删除"; enabled: !root.busy && !root.core-running; clicked => { root.node-action(index, "delete"); } }
+                                }
                             }
+                            HorizontalBox {
+                                LineEdit { text <=> root.rename-input; placeholder-text: "所选节点名称"; }
+                                Button { text: "重命名"; enabled: root.selected-node >= 0 && !root.busy && !root.core-running; clicked => { root.rename-node(root.selected-node, root.rename-input); } }
+                            }
+                            HorizontalBox {
+                                LineEdit { text <=> root.profile-input; placeholder-text: "Profile 名称"; }
+                                LineEdit { text <=> root.port-input; placeholder-text: "本地端口 1–65535"; }
+                                Button { text: "保存映射"; enabled: root.selected-node >= 0 && !root.busy && !root.core-running; clicked => { root.save-mapping(root.selected-node, root.profile-input, root.port-input); } }
+                            }
+                            HorizontalBox {
+                                Button { text: "内存配置预览"; enabled: !root.busy; clicked => { root.action-requested("config"); } }
+                                Button { text: "sing-box check"; enabled: !root.busy && !root.core-running; clicked => { root.action-requested("check"); } }
+                            }
+                        }
+                        if root.current-page == "诊断与验收": Panel {
+                            Label { text: "通过各入口执行真实 HTTPS 请求，使用 SOCKS5 hostname 模式。每批最多 4 个并发。"; }
+                            HorizontalBox {
+                                Button { text: "测试全部出口 IP"; enabled: !root.busy && root.core-running; clicked => { root.action-requested("test"); } }
+                                Button { text: "DNS 路径诊断"; enabled: !root.busy && root.core-running; clicked => { root.action-requested("dns"); } }
+                                Button { text: "所选节点故障隔离"; enabled: !root.busy && root.core-running && root.selected-node >= 0; clicked => { root.action-requested("isolation"); } }
+                            }
+                            Label { text: "故障测试需先在节点页面选择目标；执行前会确认，测试结束恢复原配置。"; }
+                            Label { text: "浏览器检查步骤：创建独立浏览器 Profile，将 SOCKS5 指向所选本地端口，启用远程 DNS。分别检查浏览器 DoH、系统 DNS 与 WebRTC；使用 DNS 检测服务和 WebRTC 检测页，记录服务名称、时间及解析器/IP。关闭代理后重复对照。浏览器可能自行使用 DoH 或直连 UDP，单次 HTTPS 查询不能证明无泄漏。"; }
+                            Button { text: "导出诊断报告"; enabled: !root.busy; clicked => { root.action-requested("export"); } }
+                            Label { text: "最近 100 条（最多保存 500 条），时间为 Unix 秒："; }
+                            for row in root.diagnostic-rows: Label { text: row; }
+                        }
+                        if root.current-page == "运行日志": Panel {
+                            Label { text: "仅记录结构化生命周期与操作事件，不收集含节点凭据的原始核心输出。时间为 Unix 秒。"; }
+                            for row in root.log-rows: Label { text: row; }
+                        }
+                        if root.current-page == "设置": Panel {
+                            Label { text: "核心程序"; font-weight: 700; }
+                            Label { text: root.core-path + "\n" + root.core-version; }
+                            LineEdit { text <=> root.expected-hash; placeholder-text: "可选：从可信来源获取的本地 EXE SHA-256"; }
+                            HorizontalBox {
+                                Button { text: "选择本地核心"; enabled: !root.busy && !root.core-running; clicked => { root.choose-core(); } }
+                                Button { text: "下载最新官方核心"; enabled: !root.busy && !root.core-running; clicked => { root.action-requested("download"); } }
+                            }
+                            Label { text: "下载仅使用 SagerNet 官方 GitHub 发布，并核对发布资产 SHA-256。哈希校验不等同于发行者签名；旧核心目录保留，可重新选择以回滚。"; }
+                            Label { text: "出口 IP 查询服务（HTTPS，返回纯文本 IP）"; }
+                            LineEdit { text <=> root.ip-url; }
+                            Label { text: "远程 DNS 请求目标（HTTPS）"; }
+                            LineEdit { text <=> root.dns-url; }
+                            HorizontalBox {
+                                Label { text: "并发数（1–4）"; }
+                                LineEdit { text <=> root.concurrency; }
+                                Label { text: "超时秒（3–60）"; }
+                                LineEdit { text <=> root.timeout-seconds; }
+                            }
+                            Button { text: "保存设置"; enabled: !root.busy; clicked => { root.save-settings(root.ip-url, root.dns-url, root.concurrency, root.timeout-seconds); } }
+                            HorizontalBox {
+                                Button { text: "备份节点元数据"; enabled: !root.busy; clicked => { root.action-requested("backup"); } }
+                                Button { text: "恢复节点元数据"; enabled: !root.busy && !root.core-running; clicked => { root.action-requested("restore"); } }
+                            }
+                            Label { text: "备份不含密码，跨电脑恢复后需重新导入链接。运行配置在本地数据目录中暂存明文密码，正常退出会清除。"; }
                         }
                     }
                 }
-
-                Rectangle {
-                    background: white;
-                    border-color: #e5eaf1;
-                    border-width: 1px;
-                    border-radius: 9px;
-                    VerticalBox {
-                        padding: 14px;
-                        spacing: 8px;
-                        HorizontalBox {
-                            Text { text: "本地节点清单"; color: #293548; font-size: 14px; font-weight: 700; }
-                            Rectangle { horizontal-stretch: 1; }
-                            Text { text: root.node_count_text + " / 10"; color: #7c899b; font-size: 11px; }
-                        }
-                        Text { text: "凭据存入 Windows 凭据管理器；节点清单只保存非敏感元数据。"; color: #8995a6; font-size: 10px; }
-                        for row[index] in root.node_rows: HorizontalBox {
-                            height: 32px;
-                            Text { text: row; color: #354257; font-size: 10px; vertical-alignment: center; horizontal-stretch: 1; }
-                            Button { text: "选择"; clicked => { root.select_node(index); } }
-                            Button { text: "启用/停用"; clicked => { root.node_action(index, "toggle"); } }
-                            Button { text: "删除"; clicked => { root.node_action(index, "delete"); } }
-                        }
-                        HorizontalBox {
-                            LineEdit {
-                                text <=> root.rename_input;
-                                placeholder-text: "输入新节点名称";
-                                horizontal-stretch: 1;
-                            }
-                            Button {
-                                text: "重命名所选节点";
-                                enabled: root.selected_node >= 0;
-                                clicked => { root.rename_node(root.selected_node, root.rename_input); }
-                            }
-                        }
-                    }
-                }
-
-                HorizontalBox {
-                    spacing: 12px;
-                    for card[index] in [
-                        { title: "已导入节点", value: root.node_count_text, detail: "最多 10 个" },
-                        { title: "已验证出口", value: "—", detail: "显示最近一次测试结果" },
-                        { title: "异常节点", value: "—", detail: "未持久化测试历史" }
-                    ]: Rectangle {
-                        horizontal-stretch: 1;
-                        background: white;
-                        border-color: #e5eaf1;
-                        border-width: 1px;
-                        border-radius: 9px;
-                        min-height: 105px;
-                        VerticalBox {
-                            padding: 14px;
-                            spacing: 7px;
-                            Text { text: card.title; color: #7c899b; font-size: 11px; }
-                            Text { text: card.value; color: #263348; font-size: 26px; font-weight: 700; }
-                            Text { text: card.detail; color: #9aa5b3; font-size: 10px; }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    background: white;
-                    border-color: #e5eaf1;
-                    border-width: 1px;
-                    border-radius: 9px;
-                    VerticalBox {
-                        padding: 14px;
-                        spacing: 10px;
-                        HorizontalBox {
-                            Text { text: "sing-box 核心 / Profile 端口绑定"; color: #293548; font-size: 14px; font-weight: 700; }
-                            Rectangle { horizontal-stretch: 1; }
-                            Button { text: "选择 sing-box.exe"; clicked => { root.choose_core(); } }
-                            Button { text: "生成配置预览"; clicked => { root.action_requested("config"); } }
-                        }
-                        Text { text: root.core_path; color: #64758d; font-size: 10px; wrap: word-wrap; }
-                        HorizontalBox {
-                            Button { text: "启动核心"; clicked => { root.action_requested("start"); } }
-                            Button { text: "停止核心"; clicked => { root.action_requested("stop"); } }
-                            Button { text: "测试出口 IP"; clicked => { root.action_requested("test"); } }
-                            Button { text: "DNS 路径诊断"; clicked => { root.action_requested("dns"); } }
-                        }
-                        Text { text: "每个节点分配一个 127.0.0.1 SOCKS5 端口（18001–18010）。配置文件含代理凭据，仅存放在本机应用数据目录；不会上传到云端。"; color: #8995a6; font-size: 10px; wrap: word-wrap; }
-                        for row[index] in root.node_rows: HorizontalBox {
-                            height: 30px;
-                            Text { text: row; color: #64758d; font-size: 10px; vertical-alignment: center; }
-                        }
-                        Text { text: "真实监听状态、出口 IP 和 DNS 结果将在 sing-box 生命周期与诊断阶段接入。"; color: #9aa5b3; font-size: 10px; }
-                    }
-                }
-
-                Rectangle { vertical-stretch: 1; }
-
-                HorizontalBox {
-                    Text { text: "ProxyPilot  v0.1.0"; color: #9aa5b3; font-size: 10px; }
-                    Rectangle { horizontal-stretch: 1; }
-                    Text { text: "本地运行 · 不修改 v2rayN"; color: #9aa5b3; font-size: 10px; }
-                }
+                Label { text: "ProxyPilot 0.2.1  ·  本地运行  ·  每个入口固定绑定一个出站"; color: #7b899e; font-size: 11px; }
             }
         }
     }

@@ -31,20 +31,17 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
+      - name: Verify official core integration with synthetic nodes
+        run: cargo run --release --locked --example core_acceptance
+
       - name: Assemble portable package
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist/ProxyPilot | Out-Null
-          Copy-Item target/release/proxypilot.exe dist/ProxyPilot/proxypilot.exe
-          Copy-Item README.md dist/ProxyPilot/README.md
-          Copy-Item docs/IMPLEMENTATION-PLAN.md dist/ProxyPilot/IMPLEMENTATION-PLAN.md
-          Copy-Item docs/SECURITY-OPERATIONS.md dist/ProxyPilot/SECURITY-OPERATIONS.md
-          Compress-Archive -Path dist/ProxyPilot/* -DestinationPath dist/ProxyPilot-windows-x64.zip -Force
+        run: ./scripts/package.ps1 -SkipBuild
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
           name: ProxyPilot-windows-x64
-          path: dist/ProxyPilot-windows-x64.zip
+          path: dist/*-windows-x64.zip
           if-no-files-found: error
           retention-days: 14

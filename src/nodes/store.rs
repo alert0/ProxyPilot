@@ -22,13 +22,13 @@ pub struct NodeRecord {
     pub secret_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeSecret {
     pub password: String,
     pub obfs_password: Option<String>,
 }
 
-pub trait SecretVault {
+pub trait SecretVault: Send {
     fn set(&self, key: &str, value: &str) -> Result<(), String>;
     fn get(&self, key: &str) -> Result<String, String>;
     fn delete(&self, key: &str) -> Result<(), String>;
@@ -105,6 +105,7 @@ impl NodeStore {
             if file.nodes.len() > MAX_NODES {
                 return Err("本地节点清单超过当前版本支持的 10 个节点".to_owned());
             }
+            validate_records(&file.nodes)?;
             file.nodes
         } else {
             Vec::new()
@@ -117,12 +118,34 @@ impl NodeStore {
     }
 
     pub fn add(&mut self, node: Hy2Node) -> Result<AddNodeResult, String> {
-        if let Some(existing) = self.nodes.iter().find(|saved| {
+        for existing in self.nodes.iter().filter(|saved| {
             saved.server.eq_ignore_ascii_case(&node.server)
                 && saved.server_port == node.server_port
                 && saved.name == node.name
+                && saved.sni == node.sni
+                && saved.insecure == node.insecure
+                && saved.obfs_type == node.obfs_type
+                && saved.warnings
+                    == node
+                        .warnings
+                        .iter()
+                        .map(|w| w.parameter.clone())
+                        .collect::<Vec<_>>()
         }) {
-            let raw = self.vault.get(&existing.secret_key)?;
+            let raw = match self.vault.get(&existing.secret_key) {
+                Ok(raw) => raw,
+                Err(_) => {
+                    let secret = NodeSecret {
+                        password: node.password.clone(),
+                        obfs_password: node.obfs_password.clone(),
+                    };
+                    self.vault.set(
+                        &existing.secret_key,
+                        &serde_json::to_string(&secret).map_err(|_| "无法序列化凭据")?,
+                    )?;
+                    return Ok(AddNodeResult::Added(existing.id.clone()));
+                }
+            };
             let saved_secret: NodeSecret = serde_json::from_str(&raw)
                 .map_err(|_| "现有节点凭据格式无效，无法安全检查重复项".to_owned())?;
             if saved_secret.password == node.password
@@ -188,8 +211,13 @@ impl NodeStore {
             .iter_mut()
             .find(|node| node.id == id)
             .ok_or_else(|| "找不到要修改的节点".to_owned())?;
+        let previous = node.name.clone();
         node.name = name.to_owned();
-        self.save()
+        if let Err(error) = self.save() {
+            self.nodes.iter_mut().find(|n| n.id == id).unwrap().name = previous;
+            return Err(error);
+        }
+        Ok(())
     }
 
     pub fn set_enabled(&mut self, id: &str, enabled: bool) -> Result<(), String> {
@@ -198,8 +226,70 @@ impl NodeStore {
             .iter_mut()
             .find(|node| node.id == id)
             .ok_or_else(|| "找不到要修改的节点".to_owned())?;
+        let previous = node.enabled;
         node.enabled = enabled;
-        self.save()
+        if let Err(error) = self.save() {
+            self.nodes.iter_mut().find(|n| n.id == id).unwrap().enabled = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub fn set_mapping(&mut self, id: &str, profile: &str, port: u16) -> Result<(), String> {
+        if port == 0 || profile.trim().is_empty() || profile.chars().count() > 80 {
+            return Err("Profile 名称须为 1–80 字，端口须为 1–65535".into());
+        }
+        if self
+            .nodes
+            .iter()
+            .any(|n| n.id != id && n.listen_port == port)
+        {
+            return Err("本地端口已分配给其他 Profile".into());
+        }
+        let previous = self.nodes.clone();
+        let node = self
+            .nodes
+            .iter_mut()
+            .find(|n| n.id == id)
+            .ok_or("找不到所选节点")?;
+        node.profile_name = profile.trim().into();
+        node.listen_port = port;
+        if let Err(error) = self.save() {
+            self.nodes = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Metadata only: credentials remain in this Windows user's vault.
+    pub fn backup(&self, path: &std::path::Path) -> Result<(), String> {
+        crate::settings::write_json(
+            path,
+            &NodeFile {
+                version: 1,
+                nodes: self.nodes.clone(),
+            },
+        )
+    }
+
+    /// Validate before replacing anything. On another PC credentials must be
+    /// re-imported; restoring metadata never claims to restore secrets.
+    pub fn restore(&mut self, path: &std::path::Path) -> Result<(), String> {
+        if fs::metadata(path).map_err(|_| "无法读取备份")?.len() > 1_048_576 {
+            return Err("备份超过 1 MiB".into());
+        }
+        let file: NodeFile = serde_json::from_slice(&fs::read(path).map_err(|_| "无法读取备份")?)
+            .map_err(|_| "备份格式无效")?;
+        if file.version != 1 {
+            return Err("备份版本不受支持".into());
+        }
+        validate_records(&file.nodes)?;
+        let previous = std::mem::replace(&mut self.nodes, file.nodes);
+        if let Err(error) = self.save() {
+            self.nodes = previous;
+            return Err(error);
+        }
+        Ok(())
     }
 
     pub fn delete(&mut self, id: &str) -> Result<(), String> {
@@ -213,7 +303,13 @@ impl NodeStore {
             self.nodes.insert(index, record);
             return Err(error);
         }
-        self.vault.delete(&record.secret_key)
+        if let Err(error) = self.vault.delete(&record.secret_key) {
+            self.nodes.insert(index, record);
+            self.save()
+                .map_err(|_| "凭据删除失败，元数据回滚也失败，请从备份恢复")?;
+            return Err(error);
+        }
+        Ok(())
     }
 
     pub fn secret_for(&self, id: &str) -> Result<NodeSecret, String> {
@@ -295,6 +391,36 @@ impl NodeStore {
     }
 }
 
+fn validate_records(nodes: &[NodeRecord]) -> Result<(), String> {
+    if nodes.len() > MAX_NODES {
+        return Err("节点数超过 10 个".into());
+    }
+    let mut ids = std::collections::HashSet::new();
+    let mut ports = std::collections::HashSet::new();
+    for node in nodes {
+        if uuid::Uuid::parse_str(&node.id).is_err()
+            || node.secret_key != format!("node-{}", node.id)
+            || !ids.insert(&node.id)
+            || node.listen_port == 0
+            || !ports.insert(node.listen_port)
+            || node.server.is_empty()
+            || node.server_port == 0
+            || node.name.trim().is_empty()
+            || node.name.chars().count() > 80
+            || node.profile_name.trim().is_empty()
+        {
+            return Err("节点清单含重复项或无效的身份、端口及名称".into());
+        }
+    }
+    Ok(())
+}
+
+impl std::fmt::Debug for NodeSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("NodeSecret([REDACTED])")
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct ImportSummary {
     pub added: Vec<(String, String)>,
@@ -336,6 +462,76 @@ mod tests {
 
     fn test_store() -> NodeStore {
         NodeStore::open_with(temp_path(), Box::<MemoryVault>::default()).unwrap()
+    }
+
+    #[test]
+    fn mapping_changes_reject_duplicates_and_persist_custom_ports() {
+        let mut store = test_store();
+        store.import_text("hy2://first@example.com:443#One\nhy2://second@example.org:443#Two");
+        let first = store.nodes()[0].id.clone();
+        assert!(store.set_mapping(&first, "Browser A", 18002).is_err());
+        assert!(store.set_mapping(&first, "Browser A", 0).is_err());
+        store.set_mapping(&first, "Browser A", 24567).unwrap();
+        assert_eq!(store.nodes()[0].listen_port, 24567);
+        let raw: serde_json::Value =
+            serde_json::from_slice(&fs::read(&store.path).unwrap()).unwrap();
+        assert_eq!(raw["nodes"][0]["profile_name"], "Browser A");
+        let _ = fs::remove_file(&store.path);
+    }
+
+    #[test]
+    fn failed_metadata_save_rolls_back_in_memory() {
+        let mut store = test_store();
+        store.import_text("hy2://fixture@example.com:443#Before");
+        let before = store.nodes().to_vec();
+        let original = store.path.clone();
+        // A file cannot serve as a parent directory.
+        store.path = original.join("cannot-write.json");
+        assert!(store.rename(&before[0].id, "After").is_err());
+        assert_eq!(store.nodes(), before);
+        assert!(store.set_enabled(&before[0].id, false).is_err());
+        assert_eq!(store.nodes(), before);
+        assert!(store.set_mapping(&before[0].id, "After", 20000).is_err());
+        assert_eq!(store.nodes(), before);
+        let _ = fs::remove_file(original);
+    }
+
+    #[test]
+    fn metadata_backup_restore_excludes_passwords_and_repairs_missing_credentials() {
+        let mut store = test_store();
+        store.import_text("hysteria2://fixture-secret@example.com:443#Node");
+        let backup = temp_path();
+        store.backup(&backup).unwrap();
+        assert!(!fs::read_to_string(&backup)
+            .unwrap()
+            .contains("fixture-secret"));
+        let mut restored = test_store();
+        restored.restore(&backup).unwrap();
+        let id = restored.nodes()[0].id.clone();
+        assert!(restored.secret_for(&id).is_err());
+        let summary = restored.import_text("hysteria2://fixture-secret@example.com:443#Node");
+        assert_eq!(summary.added.len(), 1);
+        assert_eq!(restored.nodes().len(), 1);
+        assert_eq!(restored.nodes()[0].id, id);
+        assert_eq!(restored.secret_for(&id).unwrap().password, "fixture-secret");
+        let mut invalid: serde_json::Value =
+            serde_json::from_slice(&fs::read(&backup).unwrap()).unwrap();
+        invalid["nodes"][0]["secret_key"] = serde_json::json!("another-app-key");
+        fs::write(&backup, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        let before = restored.nodes().to_vec();
+        assert!(restored.restore(&backup).is_err());
+        assert_eq!(restored.nodes(), before);
+        for path in [&store.path, &restored.path, &backup] {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn same_endpoint_different_tls_is_not_a_duplicate() {
+        let mut store = test_store();
+        let summary = store.import_text("hy2://fixture@example.com:443?sni=one.example#Node\nhy2://fixture@example.com:443?sni=two.example#Node");
+        assert_eq!(summary.added.len(), 2);
+        let _ = fs::remove_file(&store.path);
     }
 
     #[test]
