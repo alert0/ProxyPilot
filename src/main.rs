@@ -5,7 +5,7 @@ use proxypilot::{
     runtime::RuntimeManager,
 };
 use slint::{ModelRc, SharedString, VecModel};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fs, rc::Rc};
 
 slint::include_modules!();
 
@@ -190,6 +190,38 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(error) => app.set_status_message(error.into()),
                 }
                 refresh_node_rows(&app, &store.borrow());
+            }
+        }
+    });
+
+    app.on_choose_import_file({
+        let app_weak = app.as_weak();
+        move || {
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter("HY2 text files", &["txt"])
+                .set_title("选择包含 HY2 分享链接的文本文件")
+                .pick_file()
+            else {
+                return;
+            };
+            let result = fs::metadata(&path)
+                .map_err(|_| "无法读取所选文件信息".to_owned())
+                .and_then(|metadata| {
+                    if metadata.len() > 1_048_576 {
+                        Err("文本文件超过 1 MiB 限制".to_owned())
+                    } else {
+                        fs::read_to_string(&path)
+                            .map_err(|_| "文件不是有效 UTF-8 文本或无法读取".to_owned())
+                    }
+                });
+            if let Some(app) = app_weak.upgrade() {
+                match result {
+                    Ok(text) => {
+                        app.set_link_input(text.into());
+                        app.set_status_message("文件内容已加载到本地输入框；请点击“解析并预览”确认导入。".into());
+                    }
+                    Err(error) => app.set_status_message(error.into()),
+                }
             }
         }
     });
