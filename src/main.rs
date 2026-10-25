@@ -1,4 +1,9 @@
-use proxypilot::{config::generate_config, nodes::NodeStore, runtime::RuntimeManager};
+use proxypilot::{
+    config::generate_config,
+    diagnostics::{test_egress_ip, test_remote_dns_path},
+    nodes::NodeStore,
+    runtime::RuntimeManager,
+};
 use slint::{ModelRc, SharedString, VecModel};
 use std::{cell::RefCell, rc::Rc};
 
@@ -14,7 +19,9 @@ fn refresh_node_rows(app: &MainWindow, store: &Option<NodeStore>) {
                 .map(|node| {
                     let state = if node.enabled { "启用" } else { "停用" };
                     format!(
-                        "{state}  ·  {}  ·  {}:{}{}",
+                        "{state}  ·  {}:{}  ·  {}  ·  {}:{}{}",
+                        node.profile_name,
+                        node.listen_port,
                         node.name,
                         node.server,
                         node.server_port,
@@ -250,8 +257,82 @@ fn main() -> Result<(), slint::PlatformError> {
                     .as_mut()
                     .map(|runtime| runtime.stop().unwrap_or_else(|error| error))
                     .unwrap_or_else(|| "核心运行时不可用。".to_owned()),
-                "test" => "核心生命周期已接入；真实出口 IP 测试正在下一阶段实现。".to_owned(),
-                "dns" => "DNS 诊断正在下一阶段实现。通过 SOCKS5 远程解析测试不等于浏览器 DNS 无泄漏。".to_owned(),
+                "test" => {
+                    let ports: Vec<u16> = store
+                        .borrow()
+                        .as_ref()
+                        .map(|store| {
+                            store
+                                .nodes()
+                                .iter()
+                                .filter(|node| node.enabled)
+                                .map(|node| node.listen_port)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if ports.is_empty() {
+                        "没有启用的节点可测试。".to_owned()
+                    } else {
+                        let weak = app_weak.clone();
+                        std::thread::spawn(move || {
+                            let mut lines = Vec::new();
+                            for port in ports {
+                                let result = test_egress_ip(port);
+                                let ip = result
+                                    .egress_ip
+                                    .map(|ip| ip.to_string())
+                                    .unwrap_or_else(|| "失败".to_owned());
+                                lines.push(format!(
+                                    "端口 {}：{}（{} ms，{}）",
+                                    result.port, ip, result.elapsed_ms, result.message
+                                ));
+                            }
+                            let summary = format!("出口 IP 测试完成：{}", lines.join("；"));
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(app) = weak.upgrade() {
+                                    app.set_status_message(summary.into());
+                                }
+                            });
+                        });
+                        "已在后台启动出口 IP 测试；结果会显示在此处。".to_owned()
+                    }
+                }
+                "dns" => {
+                    let ports: Vec<u16> = store
+                        .borrow()
+                        .as_ref()
+                        .map(|store| {
+                            store
+                                .nodes()
+                                .iter()
+                                .filter(|node| node.enabled)
+                                .map(|node| node.listen_port)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if ports.is_empty() {
+                        "没有启用的节点可进行 DNS 路径诊断。".to_owned()
+                    } else {
+                        let weak = app_weak.clone();
+                        std::thread::spawn(move || {
+                            let mut lines = Vec::new();
+                            for port in ports {
+                                let result = test_remote_dns_path(port);
+                                lines.push(format!(
+                                    "端口 {}：HTTP {:?}（{} ms，{}）",
+                                    result.port, result.http_status, result.elapsed_ms, result.message
+                                ));
+                            }
+                            let summary = format!("DNS 路径诊断完成：{}", lines.join("；"));
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(app) = weak.upgrade() {
+                                    app.set_status_message(summary.into());
+                                }
+                            });
+                        });
+                        "已在后台启动 DNS 路径诊断。注意：这不是浏览器 DNS/WebRTC 无泄漏证明。".to_owned()
+                    }
+                },
                 _ => "该功能将在对应开发阶段接入。".to_owned(),
             };
             if let Some(app) = app_weak.upgrade() {
