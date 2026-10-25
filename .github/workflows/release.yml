@@ -1,0 +1,50 @@
+name: Windows Portable Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify source
+        run: |
+          cargo fmt --all -- --check
+          cargo check
+          cargo test
+          cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/ProxyPilot | Out-Null
+          Copy-Item target/release/proxypilot.exe dist/ProxyPilot/proxypilot.exe
+          Copy-Item README.md dist/ProxyPilot/README.md
+          Copy-Item docs/IMPLEMENTATION-PLAN.md dist/ProxyPilot/IMPLEMENTATION-PLAN.md
+          Copy-Item docs/SECURITY-OPERATIONS.md dist/ProxyPilot/SECURITY-OPERATIONS.md
+          Compress-Archive -Path dist/ProxyPilot/* -DestinationPath dist/ProxyPilot-windows-x64.zip -Force
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProxyPilot-windows-x64
+          path: dist/ProxyPilot-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

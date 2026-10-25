@@ -39,18 +39,26 @@
 - [Development roadmap and acceptance](docs/ROADMAP-ACCEPTANCE.md)
 - [Security and operations](docs/SECURITY-OPERATIONS.md)
 
-## Local import preview
+## Run locally
 
-Paste one `hy2://` or `hysteria2://` share link per line, or paste a Base64-encoded UTF-8 link list,
-then click “解析并预览”. Standard and URL-safe Base64 are supported, with or
-without padding; whitespace and line wrapping in Base64 input are ignored.
-Decoding and validation run locally. Unsupported protocols are reported per line.
-This previews the links only; it does not start sing-box or fetch subscription URLs.
+Install the stable Rust toolchain and Windows build prerequisites, then run:
+
+```powershell
+cargo run
+```
+
+- Paste one `hy2://` / `hysteria2://` link per line, or a standard / URL-safe Base64 list.
+- Manage imported nodes: rename, enable/disable, delete, and detect duplicates.
+- Node metadata is stored locally; passwords and obfuscation secrets use Windows Credential Manager.
+- Choose an existing `sing-box.exe` with the native file picker. ProxyPilot checks its version, generates configuration in memory, checks local port conflicts, runs `sing-box check`, then starts only the child process it created.
+- “测试出口 IP” and “DNS 路径诊断” run asynchronously using Windows `curl.exe`.
+
+Plain-text file import, test-history persistence, browser-level DNS/WebRTC testing, and automated destructive failure injection are not implemented yet.
 
 ## Safety and privacy
 
-HY2 share links can contain credentials and server metadata. Keep them local, redact secrets from logs, and never commit real links or generated production configuration to the repository. Bind local SOCKS listeners to `127.0.0.1` by default.
+HY2 links are credentials. Do not commit real links or generated production configs. SOCKS listeners bind to `127.0.0.1`; no system proxy, TUN, firewall, or v2rayN settings are changed. Node secrets are stored through Windows Credential Manager. While sing-box is running, its runtime JSON necessarily contains plaintext credentials; ProxyPilot restricts the app data directory ACL and removes the file on normal stop/exit. A forced process termination or system crash can leave that file behind, so inspect and remove it manually if ProxyPilot did not exit cleanly.
 
 ## Development status
 
-Current status: M1 import preview is implemented in the Slint UI. It accepts `hy2://` / `hysteria2://` links and Base64-encoded link lists, then parses each line locally with sanitized summaries. This is not yet persistent node management: parsed nodes are not saved, editable, or connected to sing-box. Check the latest Windows CI before treating the current commit as accepted. See `docs/IMPLEMENTATION-PLAN.md`.
+M1 node management, M2 config generation, M3 core lifecycle, and M4 basic egress/DNS-path diagnostics are implemented in code. Windows CI has verified formatting and compilation on an earlier commit; the latest changes are still being revalidated by GitHub Actions. A real HY2 profile and local Windows desktop acceptance are still required before claiming the full product is ready. See `docs/IMPLEMENTATION-PLAN.md`.

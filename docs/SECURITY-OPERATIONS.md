@@ -8,8 +8,10 @@ HY2 share links may contain server names, authentication passwords, SNI, and obf
 - Mask credentials by default in the UI.
 - Redact URI userinfo, password fields, obfuscation passwords, and sensitive query parameters from errors and logs.
 - Do not include secrets in telemetry; the first release should have no telemetry by default.
-- Prefer Windows-protected storage (for example, DPAPI-backed encryption) for stored secrets. Document the account/profile binding and backup implications.
-- Runtime config files containing credentials must be created with restrictive ACLs, written atomically, and removed or protected when no longer needed.
+- Store node passwords and obfuscation secrets through Windows Credential Manager via the `keyring` crate; metadata JSON contains no credentials.
+- The runtime config must temporarily contain plaintext credentials for sing-box. The app now attempts to restrict its dedicated config directory ACL with `icacls.exe` to the current user, SYSTEM, and local Administrators; if ACL restriction fails, config writing is blocked.
+- Runtime config is written atomically and removed on normal stop/app exit. A forced termination or OS crash can leave the file behind; recovery/cleanup UX and a Windows ACL acceptance test remain required.
+- Document Windows account/profile binding and backup implications before release.
 - Exports must exclude secrets by default; require a clear confirmation before any full-fidelity export.
 
 ## 2. Local listener security
@@ -66,7 +68,7 @@ HY2 share links may contain server names, authentication passwords, SNI, and obf
 
 - [ ] No secrets in repository history, test fixtures, CI logs, or release assets.
 - [ ] Tauri capabilities are minimal and reviewed.
-- [ ] Generated runtime config ACLs verified on Windows.
+- [ ] Generated runtime config ACLs verified on Windows. (ACL restriction code is present; manual verification is pending.)
 - [ ] Core launch/stop tested without affecting unrelated processes.
 - [ ] Port-conflict behavior tested.
 - [ ] Config-check failure blocks startup.
