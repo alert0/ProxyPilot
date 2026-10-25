@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, TextEdit } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "ProxyPilot";
@@ -6,7 +6,9 @@ export component MainWindow inherits Window {
     height: 760px;
     background: #f4f6fa;
 
-    in-out property <string> status_message: "M0 工程骨架：尚未连接真实 sing-box 核心。";
+    in-out property <string> status_message: "M1：粘贴 HY2 分享链接可进行本地解析预览。";
+    in-out property <string> link_input: "";
+    callback import_links(string);
     callback navigate(string);
     callback action_requested(string);
 
@@ -106,6 +108,31 @@ export component MainWindow inherits Window {
                             vertical-alignment: center;
                             wrap: word-wrap;
                             horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: white;
+                    border-color: #e5eaf1;
+                    border-width: 1px;
+                    border-radius: 9px;
+                    VerticalBox {
+                        padding: 14px;
+                        spacing: 8px;
+                        Text { text: "HY2 分享链接导入"; color: #293548; font-size: 14px; font-weight: 700; }
+                        Text { text: "每行粘贴一条 hy2:// 链接。解析在本机执行；密码不会显示在结果中。"; color: #8995a6; font-size: 10px; }
+                        TextEdit {
+                            text <=> root.link_input;
+                            placeholder-text: "hy2://密码@服务器:端口/?sni=example.com#节点名称";
+                            height: 100px;
+                        }
+                        HorizontalBox {
+                            alignment: end;
+                            Button {
+                                text: "解析并预览";
+                                clicked => { root.import_links(root.link_input); }
+                            }
                         }
                     }
                 }
