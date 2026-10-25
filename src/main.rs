@@ -1,4 +1,4 @@
-use proxypilot::{config::generate_config, nodes::NodeStore};
+use proxypilot::{config::generate_config, nodes::NodeStore, runtime::RuntimeManager};
 use slint::{ModelRc, SharedString, VecModel};
 use std::{cell::RefCell, rc::Rc};
 
@@ -35,6 +35,7 @@ fn refresh_node_rows(app: &MainWindow, store: &Option<NodeStore>) {
 fn main() -> Result<(), slint::PlatformError> {
     let app = MainWindow::new()?;
     let store = Rc::new(RefCell::new(NodeStore::open_default().ok()));
+    let runtime = Rc::new(RefCell::new(RuntimeManager::new().ok()));
 
     if store.borrow().is_none() {
         app.set_status_message(
@@ -42,6 +43,9 @@ fn main() -> Result<(), slint::PlatformError> {
         );
     } else {
         refresh_node_rows(&app, &store.borrow());
+    }
+    if runtime.borrow().is_none() {
+        app.set_core_path("运行时初始化失败".into());
     }
 
     app.on_navigate(|page| {
@@ -183,9 +187,38 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
+    app.on_choose_core({
+        let app_weak = app.as_weak();
+        let runtime = Rc::clone(&runtime);
+        move || {
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter("sing-box executable", &["exe"])
+                .set_title("选择 sing-box.exe")
+                .pick_file()
+            else {
+                return;
+            };
+            let result = runtime
+                .borrow_mut()
+                .as_mut()
+                .ok_or_else(|| "运行时初始化失败".to_owned())
+                .and_then(|runtime| runtime.choose_core(path.clone()));
+            if let Some(app) = app_weak.upgrade() {
+                match result {
+                    Ok(version) => {
+                        app.set_core_path(path.display().to_string().into());
+                        app.set_status_message(format!("已验证核心：{version}").into());
+                    }
+                    Err(error) => app.set_status_message(error.into()),
+                }
+            }
+        }
+    });
+
     app.on_action_requested({
         let app_weak = app.as_weak();
         let store = Rc::clone(&store);
+        let runtime = Rc::clone(&runtime);
         move |action| {
             let message = match action.as_str() {
                 "import" => "粘贴 HY2 分享链接（每行一条）或 Base64 链接列表，再点击“解析并预览”。".to_owned(),
@@ -204,8 +237,21 @@ fn main() -> Result<(), slint::PlatformError> {
                         None => "本地节点存储不可用，无法生成配置预览。".to_owned(),
                     }
                 }
-                "start" => "配置预览已接入；sing-box 版本检测、配置文件保护、核心启动/停止将在下一阶段实现。当前不会启动代理。".to_owned(),
-                "test" => "尚未执行真实代理请求。出口 IP、DNS 与故障隔离测试将在核心生命周期完成后接入。".to_owned(),
+                "start" => {
+                    let guard = store.borrow();
+                    let mut runtime_guard = runtime.borrow_mut();
+                    match (guard.as_ref(), runtime_guard.as_mut()) {
+                        (Some(store), Some(runtime)) => runtime.start(store).unwrap_or_else(|error| error),
+                        _ => "节点存储或核心运行时不可用。".to_owned(),
+                    }
+                }
+                "stop" => runtime
+                    .borrow_mut()
+                    .as_mut()
+                    .map(|runtime| runtime.stop().unwrap_or_else(|error| error))
+                    .unwrap_or_else(|| "核心运行时不可用。".to_owned()),
+                "test" => "核心生命周期已接入；真实出口 IP 测试正在下一阶段实现。".to_owned(),
+                "dns" => "DNS 诊断正在下一阶段实现。通过 SOCKS5 远程解析测试不等于浏览器 DNS 无泄漏。".to_owned(),
                 _ => "该功能将在对应开发阶段接入。".to_owned(),
             };
             if let Some(app) = app_weak.upgrade() {
