@@ -58,7 +58,9 @@ impl From<DnsPathTestResult> for DiagnosticRecord {
             checked_at_unix: now_unix(),
             kind: "remote_dns_path".to_owned(),
             port: result.port,
-            success: result.http_status.is_some_and(|status| (200..=399).contains(&status)),
+            success: result
+                .http_status
+                .is_some_and(|status| (200..=399).contains(&status)),
             egress_ip: None,
             http_status: result.http_status,
             elapsed_ms: result.elapsed_ms,
@@ -76,9 +78,7 @@ pub fn append_history(records: &[DiagnosticRecord]) -> Result<(), String> {
 }
 
 fn save_history_to(path: &std::path::Path, records: &[DiagnosticRecord]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "诊断历史路径无效".to_owned())?;
+    let parent = path.parent().ok_or_else(|| "诊断历史路径无效".to_owned())?;
     fs::create_dir_all(parent).map_err(|_| "无法创建诊断历史目录".to_owned())?;
     let mut history: Vec<DiagnosticRecord> = if path.exists() {
         let raw = fs::read_to_string(path).map_err(|_| "无法读取现有诊断历史".to_owned())?;
@@ -92,16 +92,14 @@ fn save_history_to(path: &std::path::Path, records: &[DiagnosticRecord]) -> Resu
         let excess = history.len() - 500;
         history.drain(..excess);
     }
-    let json = serde_json::to_vec_pretty(&history)
-        .map_err(|_| "无法序列化诊断历史".to_owned())?;
+    let json = serde_json::to_vec_pretty(&history).map_err(|_| "无法序列化诊断历史".to_owned())?;
     let temporary = path.with_extension("json.tmp");
     {
-        let mut file = fs::File::create(&temporary)
-            .map_err(|_| "无法创建诊断历史临时文件".to_owned())?;
+        let mut file =
+            fs::File::create(&temporary).map_err(|_| "无法创建诊断历史临时文件".to_owned())?;
         file.write_all(&json)
             .map_err(|_| "无法写入诊断历史".to_owned())?;
-        file.sync_all()
-            .map_err(|_| "无法刷新诊断历史".to_owned())?;
+        file.sync_all().map_err(|_| "无法刷新诊断历史".to_owned())?;
     }
     fs::rename(&temporary, path).map_err(|_| "无法替换诊断历史文件".to_owned())
 }
