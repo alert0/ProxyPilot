@@ -145,7 +145,11 @@ impl RuntimeManager {
         let Some(mut child) = self.child.take() else {
             return Ok("当前没有由 ProxyPilot 启动的 sing-box 进程".to_owned());
         };
-        if child.try_wait().map_err(|_| "无法检查 sing-box 进程状态".to_owned())?.is_some() {
+        if child
+            .try_wait()
+            .map_err(|_| "无法检查 sing-box 进程状态".to_owned())?
+            .is_some()
+        {
             return Ok("sing-box 进程已经退出".to_owned());
         }
         child
@@ -164,8 +168,8 @@ impl RuntimeManager {
             .parent()
             .ok_or_else(|| "配置文件路径无效".to_owned())?;
         fs::create_dir_all(parent).map_err(|_| "无法创建本地配置目录".to_owned())?;
-        let data = serde_json::to_vec_pretty(config)
-            .map_err(|_| "无法序列化 sing-box 配置".to_owned())?;
+        let data =
+            serde_json::to_vec_pretty(config).map_err(|_| "无法序列化 sing-box 配置".to_owned())?;
         let temporary = self.config_path.with_extension("json.tmp");
         {
             let mut file = OpenOptions::new()
