@@ -192,5 +192,6 @@ impl Drop for RuntimeManager {
                 let _ = child.wait();
             }
         }
+        let _ = fs::remove_file(&self.config_path);
     }
 }
