@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 const MAX_NODES: usize = 10;
@@ -279,11 +279,6 @@ impl NodeStore {
         fs::rename(&tmp, &self.path)
             .map_err(|_| "无法原子替换本地节点清单".to_owned())
     }
-
-    #[cfg(test)]
-    fn path(&self) -> &Path {
-        &self.path
-    }
 }
 
 #[derive(Default, Debug)]
@@ -356,7 +351,7 @@ mod tests {
         assert!(!store.nodes()[0].enabled);
         store.delete(id).unwrap();
         assert!(store.nodes().is_empty());
-        let _ = fs::remove_file(store.path());
+        let _ = fs::remove_file(&store.path);
     }
 
     #[test]
