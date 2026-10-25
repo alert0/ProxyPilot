@@ -39,6 +39,14 @@
 - [Development roadmap and acceptance](docs/ROADMAP-ACCEPTANCE.md)
 - [Security and operations](docs/SECURITY-OPERATIONS.md)
 
+## Local import preview
+
+Paste one `hy2://` or `hysteria2://` share link per line, or paste a Base64-encoded UTF-8 link list,
+then click “解析并预览”. Standard and URL-safe Base64 are supported, with or
+without padding; whitespace and line wrapping in Base64 input are ignored.
+Decoding and validation run locally. Unsupported protocols are reported per line.
+This previews the links only; it does not start sing-box or fetch subscription URLs.
+
 ## Safety and privacy
 
 HY2 share links can contain credentials and server metadata. Keep them local, redact secrets from logs, and never commit real links or generated production configuration to the repository. Bind local SOCKS listeners to `127.0.0.1` by default.

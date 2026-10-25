@@ -6,7 +6,7 @@ export component MainWindow inherits Window {
     height: 760px;
     background: #f4f6fa;
 
-    in-out property <string> status_message: "M1：粘贴 HY2 分享链接可进行本地解析预览。";
+    in-out property <string> status_message: "M1：粘贴 HY2 分享链接或 Base64 内容可进行本地解析预览。";
     in-out property <string> link_input: "";
     callback import_links(string);
     callback navigate(string);
@@ -121,10 +121,10 @@ export component MainWindow inherits Window {
                         padding: 14px;
                         spacing: 8px;
                         Text { text: "HY2 分享链接导入"; color: #293548; font-size: 14px; font-weight: 700; }
-                        Text { text: "每行粘贴一条 hy2:// 链接。解析在本机执行；密码不会显示在结果中。"; color: #8995a6; font-size: 10px; }
+                        Text { text: "支持 hy2://、hysteria2:// 链接（每行一条）或 Base64 链接列表。解析在本机执行；密码不会显示在结果中。"; color: #8995a6; font-size: 10px; }
                         TextEdit {
                             text <=> root.link_input;
-                            placeholder-text: "hy2://密码@服务器:端口/?sni=example.com#节点名称";
+                            placeholder-text: "粘贴 hy2://、hysteria2:// 分享链接或 Base64 内容";
                             height: 100px;
                         }
                         HorizontalBox {

@@ -1,4 +1,4 @@
-use proxypilot::nodes::parse_hy2_link;
+use proxypilot::nodes::{decode_import_text, parse_hy2_link};
 
 slint::include_modules!();
 
@@ -12,6 +12,15 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_import_links({
         let app_weak = app.as_weak();
         move |links| {
+            let links = match decode_import_text(links.as_str()) {
+                Ok(text) => text,
+                Err(error) => {
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_status_message(error.to_string().into());
+                    }
+                    return;
+                }
+            };
             let mut imported = Vec::new();
             let mut failed = Vec::new();
 
@@ -23,7 +32,8 @@ fn main() -> Result<(), slint::PlatformError> {
 
                 match parse_hy2_link(line) {
                     Ok(node) => {
-                        let mut summary = format!("{} — {}:{}", node.name, node.server, node.server_port);
+                        let mut summary =
+                            format!("{} — {}:{}", node.name, node.server, node.server_port);
                         if !node.warnings.is_empty() {
                             let names = node
                                 .warnings
@@ -39,13 +49,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
 
-            let mut message = format!("解析完成：成功 {} 条，失败 {} 条。", imported.len(), failed.len());
+            let mut message = format!(
+                "解析完成：成功 {} 条，失败 {} 条。",
+                imported.len(),
+                failed.len()
+            );
             if !imported.is_empty() {
-                message.push_str("\\n成功：");
+                message.push_str("\n成功：");
                 message.push_str(&imported.join("；"));
             }
             if !failed.is_empty() {
-                message.push_str("\\n失败：");
+                message.push_str("\n失败：");
                 message.push_str(&failed.join("；"));
             }
 
@@ -60,7 +74,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |action| {
             if let Some(app) = app_weak.upgrade() {
                 let message = match action.as_str() {
-                    "import" => "请在下方粘贴 HY2 分享链接，每行一条，再点击“解析并预览”。",
+                    "import" => "请粘贴 HY2 分享链接（每行一条）或 Base64 编码的链接列表，再点击“解析并预览”。",
                     "start" => "当前尚未启动 sing-box。真实进程管理将在后续阶段实现。",
                     "test" => "当前尚未执行真实代理请求或出口 IP 检测。",
                     _ => "该功能将在对应开发阶段接入。",

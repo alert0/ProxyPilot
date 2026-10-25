@@ -8,6 +8,7 @@ rust-version = "1.80"
 build = "build.rs"
 
 [dependencies]
+base64 = "0.23"
 percent-encoding = "2.3"
 slint = "1.10"
 url = "2.5"

@@ -59,7 +59,7 @@ impl fmt::Display for Hy2ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             Self::InvalidUrl => "分享链接格式无效",
-            Self::UnsupportedScheme => "仅支持 hy2:// 分享链接",
+            Self::UnsupportedScheme => "仅支持 hy2:// 或 hysteria2:// 分享链接",
             Self::MissingServer => "分享链接缺少服务器地址",
             Self::MissingPort => "分享链接缺少服务器端口",
             Self::InvalidPort => "服务器端口无效",
@@ -80,15 +80,17 @@ impl std::error::Error for Hy2ParseError {}
 /// reported by name only, and credentials are redacted from Debug output.
 pub fn parse_hy2_link(input: &str) -> Result<Hy2Node, Hy2ParseError> {
     let trimmed = input.trim();
-    if !trimmed
-        .get(..6)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("hy2://"))
-    {
+    let supported = ["hy2://", "hysteria2://"].iter().any(|scheme| {
+        trimmed
+            .get(..scheme.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+    });
+    if !supported {
         return Err(Hy2ParseError::UnsupportedScheme);
     }
 
     let url = Url::parse(trimmed).map_err(|_| Hy2ParseError::InvalidUrl)?;
-    if url.scheme() != "hy2" {
+    if !matches!(url.scheme(), "hy2" | "hysteria2") {
         return Err(Hy2ParseError::UnsupportedScheme);
     }
 
@@ -200,6 +202,20 @@ fn non_empty(value: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hysteria2_alias_matches_short_scheme_with_sni_and_chinese_name() {
+        let short =
+            "hy2://fixture-password@example.com:5988?sni=edge.example.com#%E7%BE%8E%E5%9B%BD";
+        let expected = parse_hy2_link(short).unwrap();
+        for scheme in ["hysteria2", "HYSTERIA2", "Hy2"] {
+            let node = parse_hy2_link(&short.replacen("hy2", scheme, 1)).unwrap();
+            assert_eq!(node, expected);
+            assert_eq!(node.name, "美国");
+            assert_eq!(node.sni.as_deref(), Some("edge.example.com"));
+            assert_eq!(node.server_port, 5988);
+        }
+    }
 
     #[test]
     fn parses_basic_link_and_encoded_name() {
