@@ -209,36 +209,21 @@ export component MainWindow inherits Window {
                     border-width: 1px;
                     border-radius: 9px;
                     VerticalBox {
-                        spacing: 12px;
+                        padding: 14px;
+                        spacing: 10px;
                         HorizontalBox {
-                            Text { text: "本地 SOCKS5 端口映射"; color: #293548; font-size: 14px; font-weight: 700; }
+                            Text { text: "Profile 端口绑定"; color: #293548; font-size: 14px; font-weight: 700; }
                             Rectangle { horizontal-stretch: 1; }
+                            Button { text: "生成配置预览"; clicked => { root.action_requested("config"); } }
                             Button { text: "测试连接"; clicked => { root.action_requested("test"); } }
                             Button { text: "启动核心"; clicked => { root.action_requested("start"); } }
                         }
-
-                        HorizontalBox {
-                            Text { text: "PROFILE"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
-                            Text { text: "本地监听"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
-                            Text { text: "目标节点"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
-                            Text { text: "状态"; color: #8995a6; font-size: 10px; horizontal-stretch: 1; }
+                        Text { text: "每个节点分配一个 127.0.0.1 SOCKS5 端口（18001–18010）。当前仅生成内存中的配置预览，不会启动核心或写入明文配置文件。"; color: #8995a6; font-size: 10px; wrap: word-wrap; }
+                        for row[index] in root.node_rows: HorizontalBox {
+                            height: 30px;
+                            Text { text: row; color: #64758d; font-size: 10px; vertical-alignment: center; }
                         }
-
-                        for item[index] in [
-                            { name: "Profile 01", port: "18001", node: "HY2-01" },
-                            { name: "Profile 02", port: "18002", node: "HY2-02" },
-                            { name: "Profile 03", port: "18003", node: "HY2-03" },
-                            { name: "Profile 04", port: "18004", node: "HY2-04" },
-                            { name: "Profile 05", port: "18005", node: "HY2-05" }
-                        ]: HorizontalBox {
-                            height: 34px;
-                            Rectangle { horizontal-stretch: 1; Text { text: item.name; color: #354257; font-size: 11px; vertical-alignment: center; } }
-                            Rectangle { horizontal-stretch: 1; Text { text: "127.0.0.1:" + item.port; color: #64758d; font-size: 11px; vertical-alignment: center; } }
-                            Rectangle { horizontal-stretch: 1; Text { text: item.node; color: #64758d; font-size: 11px; vertical-alignment: center; } }
-                            Rectangle { horizontal-stretch: 1; Text { text: "未检测"; color: #8d98a8; font-size: 10px; vertical-alignment: center; } }
-                        }
-
-                        Text { text: "当前节点计数、出口状态和端口映射仍为静态示例；导入解析尚未保存为节点记录。"; color: #9aa5b3; font-size: 10px; }
+                        Text { text: "真实监听状态、出口 IP 和 DNS 结果将在 sing-box 生命周期与诊断阶段接入。"; color: #9aa5b3; font-size: 10px; }
                     }
                 }
 
