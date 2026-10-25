@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, TextEdit, TextInput } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, TextEdit, LineEdit } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "ProxyPilot";
@@ -168,7 +168,7 @@ export component MainWindow inherits Window {
                             Button { text: "删除"; clicked => { root.node_action(index, "delete"); } }
                         }
                         HorizontalBox {
-                            TextInput {
+                            LineEdit {
                                 text <=> root.rename_input;
                                 placeholder-text: "输入新节点名称";
                                 horizontal-stretch: 1;
