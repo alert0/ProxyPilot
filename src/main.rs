@@ -1,4 +1,4 @@
-use proxypilot::nodes::NodeStore;
+use proxypilot::{config::generate_config, nodes::NodeStore};
 use std::{cell::RefCell, rc::Rc};
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -188,14 +188,30 @@ fn main() -> Result<(), slint::PlatformError> {
 
     app.on_action_requested({
         let app_weak = app.as_weak();
+        let store = Rc::clone(&store);
         move |action| {
+            let message = match action.as_str() {
+                "import" => "粘贴 HY2 分享链接（每行一条）或 Base64 链接列表，再点击“解析并预览”。".to_owned(),
+                "config" => {
+                    let guard = store.borrow();
+                    match guard.as_ref() {
+                        Some(store) => match generate_config(store.nodes(), |id| store.secret_for(id)) {
+                            Ok(config) => format!(
+                                "配置预览成功：{} 个 SOCKS5 入口、{} 个 HY2 出站、{} 条显式路由。尚未调用 sing-box check，也未启动核心。",
+                                config["inbounds"].as_array().map_or(0, Vec::len),
+                                config["outbounds"].as_array().map_or(0, Vec::len),
+                                config["route"]["rules"].as_array().map_or(0, Vec::len)
+                            ),
+                            Err(error) => format!("无法生成配置预览：{error}"),
+                        },
+                        None => "本地节点存储不可用，无法生成配置预览。".to_owned(),
+                    }
+                }
+                "start" => "配置预览已接入；sing-box 版本检测、配置文件保护、核心启动/停止将在下一阶段实现。当前不会启动代理。".to_owned(),
+                "test" => "尚未执行真实代理请求。出口 IP、DNS 与故障隔离测试将在核心生命周期完成后接入。".to_owned(),
+                _ => "该功能将在对应开发阶段接入。".to_owned(),
+            };
             if let Some(app) = app_weak.upgrade() {
-                let message = match action.as_str() {
-                    "import" => "粘贴 HY2 分享链接（每行一条）或 Base64 链接列表，再点击“解析并预览”。",
-                    "start" => "节点管理已接入；sing-box 配置生成与核心进程管理将在下一阶段接入。当前不会启动代理。",
-                    "test" => "尚未执行真实代理请求。出口 IP、DNS 与故障隔离测试将在核心生命周期完成后接入。",
-                    _ => "该功能将在对应开发阶段接入。",
-                };
                 app.set_status_message(message.into());
             }
         }
