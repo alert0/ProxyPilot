@@ -72,7 +72,7 @@ HY2 share links may contain server names, authentication passwords, SNI, and obf
 - [ ] Core launch/stop tested without affecting unrelated processes.
 - [ ] Port-conflict behavior tested.
 - [ ] Config-check failure blocks startup.
-- [ ] Single-node failure does not silently change another endpoint's route.
+- [ ] Static config validator rejects fallback/selector routing; verify on a real node that single-node failure does not silently change another endpoint's route.
 - [ ] DNS claims accurately describe test coverage.
 - [ ] Third-party licenses/notices reviewed for exact shipped versions.
 - [ ] Upgrade, rollback, uninstall, and data-removal behavior documented.

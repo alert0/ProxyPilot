@@ -53,7 +53,7 @@ cargo run
 - Choose an existing `sing-box.exe` with the native file picker. ProxyPilot checks its version, generates configuration in memory, checks local port conflicts, runs `sing-box check`, then starts only the child process it created.
 - “测试出口 IP” and “DNS 路径诊断” run asynchronously using Windows `curl.exe`.
 
-Plain-text file import, test-history persistence, browser-level DNS/WebRTC testing, and automated destructive failure injection are not implemented yet.
+Browser-level DNS/WebRTC testing, core download/signature verification, and controlled live failure injection are not implemented yet.
 
 ## Safety and privacy
 
@@ -61,4 +61,4 @@ HY2 links are credentials. Do not commit real links or generated production conf
 
 ## Development status
 
-M1 node management, M2 config generation, M3 core lifecycle, and M4 basic egress/DNS-path diagnostics are implemented in code. Windows CI has verified formatting and compilation on an earlier commit; the latest changes are still being revalidated by GitHub Actions. A real HY2 profile and local Windows desktop acceptance are still required before claiming the full product is ready. See `docs/IMPLEMENTATION-PLAN.md`.
+M1 node management (including UTF-8 text-file import), M2 config generation with one-to-one route-isolation validation, M3 core lifecycle, and M4 egress/DNS-path diagnostics with bounded local history are implemented in code. Windows CI has verified formatting and compilation on an earlier commit; the latest changes are still being revalidated by GitHub Actions. A real HY2 profile and local Windows desktop acceptance are still required before claiming the full product is ready. See `docs/IMPLEMENTATION-PLAN.md`.
