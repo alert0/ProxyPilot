@@ -89,7 +89,8 @@ fn save_history_to(path: &std::path::Path, records: &[DiagnosticRecord]) -> Resu
     history.extend_from_slice(records);
     history.sort_by_key(|record| record.checked_at_unix);
     if history.len() > 500 {
-        history.drain(..history.len() - 500);
+        let excess = history.len() - 500;
+        history.drain(..excess);
     }
     let json = serde_json::to_vec_pretty(&history)
         .map_err(|_| "无法序列化诊断历史".to_owned())?;
