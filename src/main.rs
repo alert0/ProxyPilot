@@ -1,6 +1,6 @@
 use proxypilot::{
     config::generate_config,
-    diagnostics::{test_egress_ip, test_remote_dns_path},
+    diagnostics::{append_history, test_egress_ip, test_remote_dns_path, DiagnosticRecord},
     nodes::NodeStore,
     runtime::RuntimeManager,
 };
@@ -308,8 +308,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         let weak = app_weak.clone();
                         std::thread::spawn(move || {
                             let mut lines = Vec::new();
+                            let mut history = Vec::new();
                             for port in ports {
                                 let result = test_egress_ip(port);
+                                history.push(DiagnosticRecord::from(result.clone()));
                                 let ip = result
                                     .egress_ip
                                     .map(|ip| ip.to_string())
@@ -319,7 +321,9 @@ fn main() -> Result<(), slint::PlatformError> {
                                     result.port, ip, result.elapsed_ms, result.message
                                 ));
                             }
-                            let summary = format!("出口 IP 测试完成：{}", lines.join("；"));
+                            let saved = append_history(&history).map(|_| "测试记录已保存".to_owned())
+                                .unwrap_or_else(|_| "测试结果已完成，但历史记录保存失败".to_owned());
+                            let summary = format!("出口 IP 测试完成：{}。{}", lines.join("；"), saved);
                             let _ = slint::invoke_from_event_loop(move || {
                                 if let Some(app) = weak.upgrade() {
                                     app.set_status_message(summary.into());
@@ -348,14 +352,18 @@ fn main() -> Result<(), slint::PlatformError> {
                         let weak = app_weak.clone();
                         std::thread::spawn(move || {
                             let mut lines = Vec::new();
+                            let mut history = Vec::new();
                             for port in ports {
                                 let result = test_remote_dns_path(port);
+                                history.push(DiagnosticRecord::from(result.clone()));
                                 lines.push(format!(
                                     "端口 {}：HTTP {:?}（{} ms，{}）",
                                     result.port, result.http_status, result.elapsed_ms, result.message
                                 ));
                             }
-                            let summary = format!("DNS 路径诊断完成：{}", lines.join("；"));
+                            let saved = append_history(&history).map(|_| "测试记录已保存".to_owned())
+                                .unwrap_or_else(|_| "测试结果已完成，但历史记录保存失败".to_owned());
+                            let summary = format!("DNS 路径诊断完成：{}。{}", lines.join("；"), saved);
                             let _ = slint::invoke_from_event_loop(move || {
                                 if let Some(app) = weak.upgrade() {
                                     app.set_status_message(summary.into());
