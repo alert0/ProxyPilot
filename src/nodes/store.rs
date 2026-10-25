@@ -156,7 +156,7 @@ impl NodeStore {
             warnings: node.warnings.into_iter().map(|warning| warning.parameter).collect(),
             profile_name: format!("Profile {profile_number:02}"),
             listen_port,
-            secret_key,
+            secret_key: secret_key.clone(),
         };
         if let Err(error) = self.vault.set(&secret_key, &secret_json) {
             return Err(error);
