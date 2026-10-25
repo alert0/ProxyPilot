@@ -53,7 +53,7 @@ impl RuntimeManager {
         }
         if !path
             .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("exe"))
         {
             return Err("请选择 Windows 可执行文件（.exe）".to_owned());
         }
@@ -104,6 +104,7 @@ impl RuntimeManager {
         if output.status.success() {
             Ok(())
         } else {
+            let _ = fs::remove_file(&self.config_path);
             // Never echo raw core output: it can include server or configuration details.
             Err("sing-box check 未通过；请检查节点参数与所选核心版本。未启动代理。".to_owned())
         }
@@ -153,6 +154,7 @@ impl RuntimeManager {
         child
             .wait()
             .map_err(|_| "等待 sing-box 退出失败".to_owned())?;
+        let _ = fs::remove_file(&self.config_path);
         Ok("ProxyPilot 启动的 sing-box 进程已停止；其他进程未受影响".to_owned())
     }
 
