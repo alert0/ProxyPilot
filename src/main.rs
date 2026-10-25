@@ -1,6 +1,6 @@
 use proxypilot::{config::generate_config, nodes::NodeStore};
-use std::{cell::RefCell, rc::Rc};
 use slint::{ModelRc, SharedString, VecModel};
+use std::{cell::RefCell, rc::Rc};
 
 slint::include_modules!();
 
@@ -38,8 +38,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     if store.borrow().is_none() {
         app.set_status_message(
-            "本地节点存储初始化失败。请检查 Windows 用户配置目录与凭据管理器权限。"
-                .into(),
+            "本地节点存储初始化失败。请检查 Windows 用户配置目录与凭据管理器权限。".into(),
         );
     } else {
         refresh_node_rows(&app, &store.borrow());
@@ -167,13 +166,11 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(app) = app_weak.upgrade() {
                 match result {
                     Ok(()) => {
-                        app.set_status_message(
-                            if action == "delete" {
-                                "节点已删除；本地凭据也已请求删除。".into()
-                            } else {
-                                "节点启用状态已更新。".into()
-                            },
-                        );
+                        app.set_status_message(if action == "delete" {
+                            "节点已删除；本地凭据也已请求删除。".into()
+                        } else {
+                            "节点启用状态已更新。".into()
+                        });
                         if action == "delete" {
                             app.set_selected_node(-1);
                             app.set_rename_input("".into());
