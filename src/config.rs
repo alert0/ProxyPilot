@@ -10,6 +10,7 @@ pub enum ConfigError {
     MissingSecret(String),
     UnsupportedParameters(String, Vec<String>),
     InvalidObfuscation(String),
+    InvalidRouteIsolation(String),
 }
 
 impl std::fmt::Display for ConfigError {
@@ -26,6 +27,9 @@ impl std::fmt::Display for ConfigError {
             ),
             Self::InvalidObfuscation(id) => {
                 write!(f, "节点 {id} 的混淆类型和密码不完整，已阻止生成配置")
+            }
+            Self::InvalidRouteIsolation(reason) => {
+                write!(f, "路由隔离校验失败：{reason}")
             }
         }
     }
@@ -120,14 +124,111 @@ pub fn generate_config(
         }));
     }
 
-    Ok(json!({
+    let config = json!({
         "log": { "level": "warn", "timestamp": true },
         "inbounds": inbounds,
         "outbounds": outbounds,
         "route": {
             "rules": rules
         }
-    }))
+    });
+    validate_route_isolation(&config)?;
+    Ok(config)
+}
+
+/// Ensure every local SOCKS inbound has exactly one explicit route to one unique
+/// outbound. Selector/urltest groups and implicit fallback routing are rejected.
+pub fn validate_route_isolation(config: &Value) -> Result<(), ConfigError> {
+    let inbounds = config["inbounds"]
+        .as_array()
+        .ok_or_else(|| ConfigError::InvalidRouteIsolation("缺少 inbounds".to_owned()))?;
+    let outbounds = config["outbounds"]
+        .as_array()
+        .ok_or_else(|| ConfigError::InvalidRouteIsolation("缺少 outbounds".to_owned()))?;
+    let rules = config["route"]["rules"]
+        .as_array()
+        .ok_or_else(|| ConfigError::InvalidRouteIsolation("缺少显式 route.rules".to_owned()))?;
+
+    if inbounds.is_empty() || inbounds.len() != outbounds.len() || rules.len() != inbounds.len() {
+        return Err(ConfigError::InvalidRouteIsolation(
+            "inbound、outbound 和 route rule 数量必须相同且非空".to_owned(),
+        ));
+    }
+
+    let mut inbound_tags = HashSet::new();
+    for inbound in inbounds {
+        let tag = inbound["tag"]
+            .as_str()
+            .ok_or_else(|| ConfigError::InvalidRouteIsolation("入口缺少 tag".to_owned()))?;
+        if !inbound_tags.insert(tag) {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "入口 tag 重复".to_owned(),
+            ));
+        }
+        if inbound["listen"] != "127.0.0.1" {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "SOCKS 入口必须只监听 127.0.0.1".to_owned(),
+            ));
+        }
+    }
+
+    let mut outbound_tags = HashSet::new();
+    for outbound in outbounds {
+        let tag = outbound["tag"]
+            .as_str()
+            .ok_or_else(|| ConfigError::InvalidRouteIsolation("出站缺少 tag".to_owned()))?;
+        if !outbound_tags.insert(tag) {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "出站 tag 重复".to_owned(),
+            ));
+        }
+        if matches!(outbound["type"].as_str(), Some("selector" | "urltest")) {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "禁止 selector/urltest 自动切换出站".to_owned(),
+            ));
+        }
+    }
+
+    let mut used_inbounds = HashSet::new();
+    let mut used_outbounds = HashSet::new();
+    for rule in rules {
+        if rule["action"] != "route" {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "所有入口规则必须显式使用 route action".to_owned(),
+            ));
+        }
+        let targets = rule["inbound"]
+            .as_array()
+            .ok_or_else(|| ConfigError::InvalidRouteIsolation("路由规则缺少 inbound".to_owned()))?;
+        if targets.len() != 1 {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "每条路由规则必须只匹配一个入口".to_owned(),
+            ));
+        }
+        let inbound_tag = targets[0]
+            .as_str()
+            .ok_or_else(|| ConfigError::InvalidRouteIsolation("入口 tag 格式无效".to_owned()))?;
+        let outbound_tag = rule["outbound"]
+            .as_str()
+            .ok_or_else(|| ConfigError::InvalidRouteIsolation("路由规则缺少 outbound".to_owned()))?;
+        if !inbound_tags.contains(inbound_tag) || !outbound_tags.contains(outbound_tag) {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "路由引用了不存在的入口或出站".to_owned(),
+            ));
+        }
+        if !used_inbounds.insert(inbound_tag) || !used_outbounds.insert(outbound_tag) {
+            return Err(ConfigError::InvalidRouteIsolation(
+                "入口或出站被多条规则复用，无法保证一对一绑定".to_owned(),
+            ));
+        }
+    }
+
+    if used_inbounds.len() != inbounds.len() || used_outbounds.len() != outbounds.len() {
+        return Err(ConfigError::InvalidRouteIsolation(
+            "存在没有明确绑定路由的入口或出站".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -179,6 +280,26 @@ mod tests {
             }
             assert_eq!(config["inbounds"][0]["listen"], "127.0.0.1");
         }
+    }
+
+    #[test]
+    fn route_isolation_rejects_missing_or_automatic_fallback_routes() {
+        let nodes = vec![node(0, 18001), node(1, 18002)];
+        let config = generate_config(&nodes, secret).unwrap();
+
+        let mut missing_rule = config.clone();
+        missing_rule["route"]["rules"].as_array_mut().unwrap().pop();
+        assert!(matches!(
+            validate_route_isolation(&missing_rule),
+            Err(ConfigError::InvalidRouteIsolation(_))
+        ));
+
+        let mut selector = config;
+        selector["outbounds"][0]["type"] = json!("selector");
+        assert!(matches!(
+            validate_route_isolation(&selector),
+            Err(ConfigError::InvalidRouteIsolation(_))
+        ));
     }
 
     #[test]
