@@ -12,10 +12,12 @@ export component MainWindow inherits Window {
     in-out property <int> selected_node: -1;
     in-out property <string> rename_input: "";
     in-out property <string> node_count_text: "0";
+    in-out property <string> core_path: "尚未选择 sing-box.exe";
     callback import_links(string);
     callback node_action(int, string);
     callback select_node(int);
     callback rename_node(int, string);
+    callback choose_core();
     callback navigate(string);
     callback action_requested(string);
 
@@ -212,13 +214,19 @@ export component MainWindow inherits Window {
                         padding: 14px;
                         spacing: 10px;
                         HorizontalBox {
-                            Text { text: "Profile 端口绑定"; color: #293548; font-size: 14px; font-weight: 700; }
+                            Text { text: "sing-box 核心 / Profile 端口绑定"; color: #293548; font-size: 14px; font-weight: 700; }
                             Rectangle { horizontal-stretch: 1; }
+                            Button { text: "选择 sing-box.exe"; clicked => { root.choose_core(); } }
                             Button { text: "生成配置预览"; clicked => { root.action_requested("config"); } }
-                            Button { text: "测试连接"; clicked => { root.action_requested("test"); } }
-                            Button { text: "启动核心"; clicked => { root.action_requested("start"); } }
                         }
-                        Text { text: "每个节点分配一个 127.0.0.1 SOCKS5 端口（18001–18010）。当前仅生成内存中的配置预览，不会启动核心或写入明文配置文件。"; color: #8995a6; font-size: 10px; wrap: word-wrap; }
+                        Text { text: root.core_path; color: #64758d; font-size: 10px; wrap: word-wrap; }
+                        HorizontalBox {
+                            Button { text: "启动核心"; clicked => { root.action_requested("start"); } }
+                            Button { text: "停止核心"; clicked => { root.action_requested("stop"); } }
+                            Button { text: "测试出口 IP"; clicked => { root.action_requested("test"); } }
+                            Button { text: "DNS 路径诊断"; clicked => { root.action_requested("dns"); } }
+                        }
+                        Text { text: "每个节点分配一个 127.0.0.1 SOCKS5 端口（18001–18010）。配置文件含代理凭据，仅存放在本机应用数据目录；不会上传到云端。"; color: #8995a6; font-size: 10px; wrap: word-wrap; }
                         for row[index] in root.node_rows: HorizontalBox {
                             height: 30px;
                             Text { text: row; color: #64758d; font-size: 10px; vertical-alignment: center; }
