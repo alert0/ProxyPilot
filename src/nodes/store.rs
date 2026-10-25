@@ -374,7 +374,7 @@ mod tests {
         let result = store.import_text("hy2://secret@example.com:20000#eleventh");
         assert!(result.limit_reached);
         assert_eq!(store.nodes().len(), MAX_NODES);
-        let _ = fs::remove_file(store.path());
+        let _ = fs::remove_file(&store.path);
     }
 
     #[test]
