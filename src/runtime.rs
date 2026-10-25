@@ -218,7 +218,6 @@ impl RuntimeManager {
     }
 }
 
-
 #[cfg(windows)]
 fn secure_config_directory(path: &Path) -> Result<(), String> {
     let username = std::env::var("USERNAME")
@@ -233,6 +232,8 @@ fn secure_config_directory(path: &Path) -> Result<(), String> {
         .arg(user_acl)
         .arg("*S-1-5-18:(OI)(CI)F")
         .arg("*S-1-5-32-544:(OI)(CI)F")
+        .arg("/T")
+        .arg("/C")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
