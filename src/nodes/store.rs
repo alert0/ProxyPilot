@@ -3,7 +3,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::{self, Write},
+    io::Write,
     path::PathBuf,
 };
 
@@ -290,8 +290,7 @@ impl NodeStore {
                 .sync_all()
                 .map_err(|_| "无法刷新本地节点清单".to_owned())?;
         }
-        fs::rename(&tmp, &self.path)
-            .map_err(|_| "无法原子替换本地节点清单".to_owned())
+        fs::rename(&tmp, &self.path).map_err(|_| "无法原子替换本地节点清单".to_owned())
     }
 }
 
