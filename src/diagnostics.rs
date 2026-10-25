@@ -25,6 +25,7 @@ pub struct DnsPathTestResult {
 /// the proxy; this verifies this request path only and is not a browser-wide leak test.
 pub fn test_egress_ip(port: u16) -> EgressTestResult {
     let started = Instant::now();
+    let proxy = format!("127.0.0.1:{port}");
     let output = Command::new("curl.exe")
         .args([
             "--connect-timeout",
@@ -35,7 +36,7 @@ pub fn test_egress_ip(port: u16) -> EgressTestResult {
             "--show-error",
             "--fail",
             "--socks5-hostname",
-            &format!("127.0.0.1:{port}"),
+            proxy.as_str(),
             "https://api.ipify.org",
         ])
         .stdin(Stdio::null())
@@ -81,6 +82,7 @@ pub fn test_egress_ip(port: u16) -> EgressTestResult {
 /// This does not prove that a browser, WebRTC, or system DNS has no leaks.
 pub fn test_remote_dns_path(port: u16) -> DnsPathTestResult {
     let started = Instant::now();
+    let proxy = format!("127.0.0.1:{port}");
     let output = Command::new("curl.exe")
         .args([
             "--connect-timeout",
@@ -94,7 +96,7 @@ pub fn test_remote_dns_path(port: u16) -> DnsPathTestResult {
             "--write-out",
             "%{http_code}",
             "--socks5-hostname",
-            &format!("127.0.0.1:{port}"),
+            proxy.as_str(),
             "https://example.com/",
         ])
         .stdin(Stdio::null())
