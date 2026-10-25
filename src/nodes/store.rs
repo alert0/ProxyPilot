@@ -158,9 +158,7 @@ impl NodeStore {
             listen_port,
             secret_key: secret_key.clone(),
         };
-        if let Err(error) = self.vault.set(&secret_key, &secret_json) {
-            return Err(error);
-        }
+        self.vault.set(&secret_key, &secret_json)?;
         self.nodes.push(record);
         if let Err(error) = self.save() {
             self.nodes.pop();
