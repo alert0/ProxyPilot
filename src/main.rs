@@ -1,70 +1,187 @@
-use proxypilot::nodes::{decode_import_text, parse_hy2_link};
+use proxypilot::nodes::NodeStore;
+use std::{cell::RefCell, rc::Rc};
+use slint::{ModelRc, SharedString, VecModel};
 
 slint::include_modules!();
 
+fn refresh_node_rows(app: &MainWindow, store: &Option<NodeStore>) {
+    let rows: Vec<SharedString> = store
+        .as_ref()
+        .map(|store| {
+            store
+                .nodes()
+                .iter()
+                .map(|node| {
+                    let state = if node.enabled { "启用" } else { "停用" };
+                    format!(
+                        "{state}  ·  {}  ·  {}:{}{}",
+                        node.name,
+                        node.server,
+                        node.server_port,
+                        node.sni
+                            .as_ref()
+                            .map(|sni| format!("  ·  SNI {sni}"))
+                            .unwrap_or_default()
+                    )
+                    .into()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    app.set_node_count_text(rows.len().to_string().into());
+    app.set_node_rows(ModelRc::new(VecModel::from(rows)));
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     let app = MainWindow::new()?;
+    let store = Rc::new(RefCell::new(NodeStore::open_default().ok()));
+
+    if store.borrow().is_none() {
+        app.set_status_message(
+            "本地节点存储初始化失败。请检查 Windows 用户配置目录与凭据管理器权限。"
+                .into(),
+        );
+    } else {
+        refresh_node_rows(&app, &store.borrow());
+    }
 
     app.on_navigate(|page| {
-        eprintln!("Navigation requested: {}", page);
+        let _ = page;
     });
 
     app.on_import_links({
         let app_weak = app.as_weak();
-        move |links| {
-            let links = match decode_import_text(links.as_str()) {
-                Ok(text) => text,
-                Err(error) => {
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_status_message(error.to_string().into());
-                    }
-                    return;
+        let store = Rc::clone(&store);
+        move |input| {
+            let summary = {
+                let mut guard = store.borrow_mut();
+                match guard.as_mut() {
+                    Some(store) => Some(store.import_text(input.as_str())),
+                    None => None,
                 }
             };
-            let mut imported = Vec::new();
-            let mut failed = Vec::new();
 
-            for (index, line) in links.lines().enumerate() {
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
+            let Some(summary) = summary else {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_status_message(
+                        "本地节点存储不可用，无法导入。请检查应用数据目录与 Windows 凭据管理器。"
+                            .into(),
+                    );
                 }
-
-                match parse_hy2_link(line) {
-                    Ok(node) => {
-                        let mut summary =
-                            format!("{} — {}:{}", node.name, node.server, node.server_port);
-                        if !node.warnings.is_empty() {
-                            let names = node
-                                .warnings
-                                .iter()
-                                .map(|warning| warning.parameter.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            summary.push_str(&format!("（需检查参数：{}）", names));
-                        }
-                        imported.push(summary);
-                    }
-                    Err(error) => failed.push(format!("第 {} 行：{}", index + 1, error)),
-                }
-            }
+                return;
+            };
 
             let mut message = format!(
-                "解析完成：成功 {} 条，失败 {} 条。",
-                imported.len(),
-                failed.len()
+                "导入完成：新增 {}，重复 {}，警告 {}。",
+                summary.added.len(),
+                summary.duplicates,
+                summary.warning_count
             );
-            if !imported.is_empty() {
-                message.push_str("\n成功：");
-                message.push_str(&imported.join("；"));
+            if summary.limit_reached {
+                message.push_str(" 已达到最多 10 个节点的限制。");
             }
-            if !failed.is_empty() {
-                message.push_str("\n失败：");
-                message.push_str(&failed.join("；"));
+            if !summary.errors.is_empty() {
+                message.push_str(" 错误：");
+                message.push_str(&summary.errors.join("；"));
             }
-
             if let Some(app) = app_weak.upgrade() {
                 app.set_status_message(message.into());
+                refresh_node_rows(&app, &store.borrow());
+            }
+        }
+    });
+
+    app.on_select_node({
+        let app_weak = app.as_weak();
+        let store = Rc::clone(&store);
+        move |index| {
+            if index < 0 {
+                return;
+            }
+            let name = store
+                .borrow()
+                .as_ref()
+                .and_then(|store| store.nodes().get(index as usize))
+                .map(|node| node.name.clone());
+            if let (Some(app), Some(name)) = (app_weak.upgrade(), name) {
+                app.set_selected_node(index);
+                app.set_rename_input(name.into());
+                app.set_status_message("已选择节点。重命名只修改本地显示名称。".into());
+            }
+        }
+    });
+
+    app.on_rename_node({
+        let app_weak = app.as_weak();
+        let store = Rc::clone(&store);
+        move |index, name| {
+            if index < 0 {
+                return;
+            }
+            let result = {
+                let mut guard = store.borrow_mut();
+                match guard.as_mut() {
+                    Some(store) => store
+                        .nodes()
+                        .get(index as usize)
+                        .map(|node| node.id.clone())
+                        .ok_or_else(|| "找不到所选节点".to_owned())
+                        .and_then(|id| store.rename(&id, name.as_str())),
+                    None => Err("本地节点存储不可用".to_owned()),
+                }
+            };
+            if let Some(app) = app_weak.upgrade() {
+                match result {
+                    Ok(()) => app.set_status_message("节点名称已保存。".into()),
+                    Err(error) => app.set_status_message(error.into()),
+                }
+                refresh_node_rows(&app, &store.borrow());
+            }
+        }
+    });
+
+    app.on_node_action({
+        let app_weak = app.as_weak();
+        let store = Rc::clone(&store);
+        move |index, action| {
+            if index < 0 {
+                return;
+            }
+            let result = {
+                let mut guard = store.borrow_mut();
+                match guard.as_mut() {
+                    Some(store) => {
+                        let selected = store.nodes().get(index as usize).cloned();
+                        match selected {
+                            None => Err("找不到所选节点".to_owned()),
+                            Some(node) if action == "toggle" => {
+                                store.set_enabled(&node.id, !node.enabled)
+                            }
+                            Some(node) if action == "delete" => store.delete(&node.id),
+                            _ => Err("不支持的节点操作".to_owned()),
+                        }
+                    }
+                    None => Err("本地节点存储不可用".to_owned()),
+                }
+            };
+            if let Some(app) = app_weak.upgrade() {
+                match result {
+                    Ok(()) => {
+                        app.set_status_message(
+                            if action == "delete" {
+                                "节点已删除；本地凭据也已请求删除。".into()
+                            } else {
+                                "节点启用状态已更新。".into()
+                            },
+                        );
+                        if action == "delete" {
+                            app.set_selected_node(-1);
+                            app.set_rename_input("".into());
+                        }
+                    }
+                    Err(error) => app.set_status_message(error.into()),
+                }
+                refresh_node_rows(&app, &store.borrow());
             }
         }
     });
@@ -74,9 +191,9 @@ fn main() -> Result<(), slint::PlatformError> {
         move |action| {
             if let Some(app) = app_weak.upgrade() {
                 let message = match action.as_str() {
-                    "import" => "请粘贴 HY2 分享链接（每行一条）或 Base64 编码的链接列表，再点击“解析并预览”。",
-                    "start" => "当前尚未启动 sing-box。真实进程管理将在后续阶段实现。",
-                    "test" => "当前尚未执行真实代理请求或出口 IP 检测。",
+                    "import" => "粘贴 HY2 分享链接（每行一条）或 Base64 链接列表，再点击“解析并预览”。",
+                    "start" => "节点管理已接入；sing-box 配置生成与核心进程管理将在下一阶段接入。当前不会启动代理。",
+                    "test" => "尚未执行真实代理请求。出口 IP、DNS 与故障隔离测试将在核心生命周期完成后接入。",
                     _ => "该功能将在对应开发阶段接入。",
                 };
                 app.set_status_message(message.into());
