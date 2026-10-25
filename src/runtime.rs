@@ -177,7 +177,9 @@ impl RuntimeManager {
         };
         if child.kill().is_err() {
             self.child = Some(child);
-            return Err("无法停止 ProxyPilot 自己启动的 sing-box 进程；已保留进程句柄以便重试".to_owned());
+            return Err(
+                "无法停止 ProxyPilot 自己启动的 sing-box 进程；已保留进程句柄以便重试".to_owned(),
+            );
         }
         if child.wait().is_err() {
             self.child = Some(child);
