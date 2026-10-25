@@ -1,8 +1,12 @@
+use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
 use std::{
+    fs,
+    io::Write,
     net::IpAddr,
     process::{Command, Stdio},
     str::FromStr,
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,6 +23,92 @@ pub struct DnsPathTestResult {
     pub http_status: Option<u16>,
     pub elapsed_ms: u128,
     pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiagnosticRecord {
+    pub checked_at_unix: u64,
+    pub kind: String,
+    pub port: u16,
+    pub success: bool,
+    pub egress_ip: Option<String>,
+    pub http_status: Option<u16>,
+    pub elapsed_ms: u128,
+    pub message: String,
+}
+
+impl From<EgressTestResult> for DiagnosticRecord {
+    fn from(result: EgressTestResult) -> Self {
+        Self {
+            checked_at_unix: now_unix(),
+            kind: "egress_ip".to_owned(),
+            port: result.port,
+            success: result.egress_ip.is_some(),
+            egress_ip: result.egress_ip.map(|ip| ip.to_string()),
+            http_status: None,
+            elapsed_ms: result.elapsed_ms,
+            message: result.message,
+        }
+    }
+}
+
+impl From<DnsPathTestResult> for DiagnosticRecord {
+    fn from(result: DnsPathTestResult) -> Self {
+        Self {
+            checked_at_unix: now_unix(),
+            kind: "remote_dns_path".to_owned(),
+            port: result.port,
+            success: result.http_status.is_some_and(|status| (200..=399).contains(&status)),
+            egress_ip: None,
+            http_status: result.http_status,
+            elapsed_ms: result.elapsed_ms,
+            message: result.message,
+        }
+    }
+}
+
+/// Append sanitized diagnostic results to a bounded local history. No URLs,
+/// credentials, or raw curl output are persisted.
+pub fn append_history(records: &[DiagnosticRecord]) -> Result<(), String> {
+    let dirs = ProjectDirs::from("com", "alert0", "ProxyPilot")
+        .ok_or_else(|| "无法确定本地诊断历史目录".to_owned())?;
+    save_history_to(&dirs.config_dir().join("diagnostics.json"), records)
+}
+
+fn save_history_to(path: &std::path::Path, records: &[DiagnosticRecord]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "诊断历史路径无效".to_owned())?;
+    fs::create_dir_all(parent).map_err(|_| "无法创建诊断历史目录".to_owned())?;
+    let mut history: Vec<DiagnosticRecord> = if path.exists() {
+        let raw = fs::read_to_string(path).map_err(|_| "无法读取现有诊断历史".to_owned())?;
+        serde_json::from_str(&raw).map_err(|_| "诊断历史格式无效；原文件已保留".to_owned())?
+    } else {
+        Vec::new()
+    };
+    history.extend_from_slice(records);
+    history.sort_by_key(|record| record.checked_at_unix);
+    if history.len() > 500 {
+        history.drain(..history.len() - 500);
+    }
+    let json = serde_json::to_vec_pretty(&history)
+        .map_err(|_| "无法序列化诊断历史".to_owned())?;
+    let temporary = path.with_extension("json.tmp");
+    {
+        let mut file = fs::File::create(&temporary)
+            .map_err(|_| "无法创建诊断历史临时文件".to_owned())?;
+        file.write_all(&json)
+            .map_err(|_| "无法写入诊断历史".to_owned())?;
+        file.sync_all()
+            .map_err(|_| "无法刷新诊断历史".to_owned())?;
+    }
+    fs::rename(&temporary, path).map_err(|_| "无法替换诊断历史文件".to_owned())
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 /// Checks egress using curl's SOCKS5 hostname mode. The hostname is sent through
@@ -150,6 +240,31 @@ fn parse_ip_response(bytes: &[u8]) -> Option<IpAddr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_history_persists_only_sanitized_bounded_records() {
+        let path = std::env::temp_dir().join(format!(
+            "proxypilot-diagnostics-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        let record = DiagnosticRecord {
+            checked_at_unix: 1,
+            kind: "egress_ip".to_owned(),
+            port: 18001,
+            success: true,
+            egress_ip: Some("203.0.113.9".to_owned()),
+            http_status: None,
+            elapsed_ms: 123,
+            message: "ok".to_owned(),
+        };
+        save_history_to(&path, &[record.clone()]).unwrap();
+        save_history_to(&path, &[record]).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let parsed: Vec<DiagnosticRecord> = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert!(!raw.contains("password"));
+        let _ = fs::remove_file(path);
+    }
 
     #[test]
     fn parses_ipv4_and_ipv6_responses() {
