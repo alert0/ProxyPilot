@@ -2,6 +2,7 @@ use crate::{config::generate_config, nodes::NodeStore};
 use serde_json::Value;
 use std::{
     fs::{self, OpenOptions},
+    net::TcpListener,
     io::Write,
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -120,6 +121,7 @@ impl RuntimeManager {
             .ok_or_else(|| "请先选择并验证 sing-box.exe".to_owned())?;
         let config = generate_config(store.nodes(), |id| store.secret_for(id))
             .map_err(|error| error.to_string())?;
+        self.check_ports_available(&config)?;
         self.validate_config(&config)?;
 
         let child = Command::new(core)
@@ -160,6 +162,22 @@ impl RuntimeManager {
             .map_err(|_| "等待 sing-box 退出失败".to_owned())?;
         let _ = fs::remove_file(&self.config_path);
         Ok("ProxyPilot 启动的 sing-box 进程已停止；其他进程未受影响".to_owned())
+    }
+
+    fn check_ports_available(&self, config: &Value) -> Result<(), String> {
+        let inbounds = config["inbounds"]
+            .as_array()
+            .ok_or_else(|| "配置中缺少 SOCKS5 入口".to_owned())?;
+        for inbound in inbounds {
+            let port = inbound["listen_port"]
+                .as_u64()
+                .and_then(|value| u16::try_from(value).ok())
+                .ok_or_else(|| "配置中的监听端口无效".to_owned())?;
+            TcpListener::bind(("127.0.0.1", port)).map_err(|_| {
+                format!("本地端口 {port} 已被占用；未结束或修改任何其他进程")
+            })?;
+        }
+        Ok(())
     }
 
     fn write_config(&self, config: &Value) -> Result<(), String> {
