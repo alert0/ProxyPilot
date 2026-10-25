@@ -20,6 +20,9 @@ pub struct NodeRecord {
     pub sni: Option<String>,
     pub insecure: bool,
     pub obfs_type: Option<String>,
+    pub warnings: Vec<String>,
+    pub profile_name: String,
+    pub listen_port: u16,
     pub secret_key: String,
 }
 
@@ -138,8 +141,10 @@ impl NodeStore {
         };
         let secret_json = serde_json::to_string(&secret)
             .map_err(|_| "无法序列化节点凭据".to_owned())?;
-        self.vault.set(&secret_key, &secret_json)?;
-
+        let listen_port = (18001..=18010)
+            .find(|port| self.nodes.iter().all(|saved| saved.listen_port != *port))
+            .ok_or_else(|| "没有可分配的本地端口，请先删除一个节点".to_owned())?;
+        let profile_number = listen_port - 18000;
         let record = NodeRecord {
             id: id.clone(),
             name: node.name,
@@ -149,8 +154,14 @@ impl NodeStore {
             sni: node.sni,
             insecure: node.insecure,
             obfs_type: node.obfs_type,
+            warnings: node.warnings.into_iter().map(|warning| warning.parameter).collect(),
+            profile_name: format!("Profile {profile_number:02}"),
+            listen_port,
             secret_key,
         };
+        if let Err(error) = self.vault.set(&secret_key, &secret_json) {
+            return Err(error);
+        }
         self.nodes.push(record);
         if let Err(error) = self.save() {
             self.nodes.pop();
