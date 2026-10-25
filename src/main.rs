@@ -65,10 +65,9 @@ fn main() -> Result<(), slint::PlatformError> {
         move |input| {
             let summary = {
                 let mut guard = store.borrow_mut();
-                match guard.as_mut() {
-                    Some(store) => Some(store.import_text(input.as_str())),
-                    None => None,
-                }
+                guard
+                    .as_mut()
+                    .map(|store| store.import_text(input.as_str()))
             };
 
             let Some(summary) = summary else {
