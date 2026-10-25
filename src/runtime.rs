@@ -93,7 +93,7 @@ impl RuntimeManager {
             .as_ref()
             .ok_or_else(|| "请先选择并验证 sing-box.exe".to_owned())?;
         self.write_config(config)?;
-        let output = Command::new(core)
+        let output = match Command::new(core)
             .arg("check")
             .arg("-c")
             .arg(&self.config_path)
@@ -101,7 +101,13 @@ impl RuntimeManager {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .output()
-            .map_err(|_| "无法启动 sing-box 配置校验进程".to_owned())?;
+        {
+            Ok(output) => output,
+            Err(_) => {
+                let _ = fs::remove_file(&self.config_path);
+                return Err("无法启动 sing-box 配置校验进程".to_owned());
+            }
+        };
         if output.status.success() {
             Ok(())
         } else {
@@ -124,7 +130,7 @@ impl RuntimeManager {
         self.check_ports_available(&config)?;
         self.validate_config(&config)?;
 
-        let child = Command::new(core)
+        let child = match Command::new(core)
             .arg("run")
             .arg("-c")
             .arg(&self.config_path)
@@ -132,7 +138,13 @@ impl RuntimeManager {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|_| "sing-box 启动失败；请确认程序权限与配置文件访问权限".to_owned())?;
+        {
+            Ok(child) => child,
+            Err(_) => {
+                let _ = fs::remove_file(&self.config_path);
+                return Err("sing-box 启动失败；请确认程序权限与配置文件访问权限".to_owned());
+            }
+        };
         self.child = Some(child);
         if !self.is_running() {
             return Err("sing-box 启动后立即退出；请检查核心版本与配置".to_owned());
