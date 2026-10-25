@@ -1,11 +1,7 @@
 use crate::nodes::{parse_hy2_link, Hy2Node};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::{
-    fs,
-    io::Write,
-    path::PathBuf,
-};
+use std::{fs, io::Write, path::PathBuf};
 
 const MAX_NODES: usize = 10;
 const VAULT_SERVICE: &str = "ProxyPilot";
