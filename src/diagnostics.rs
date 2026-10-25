@@ -128,8 +128,7 @@ pub fn test_remote_dns_path(port: u16) -> DnsPathTestResult {
                 .ok();
             let message = match code {
                 Some(200..=399) => {
-                    "SOCKS5 hostname 模式 HTTPS 请求成功；不代表浏览器 DNS/WebRTC 无泄漏"
-                        .to_owned()
+                    "SOCKS5 hostname 模式 HTTPS 请求成功；不代表浏览器 DNS/WebRTC 无泄漏".to_owned()
                 }
                 Some(status) => format!("收到 HTTP {status}；未判定为 DNS 诊断成功"),
                 None => "未能读取 HTTP 状态码；未判定为成功".to_owned(),
