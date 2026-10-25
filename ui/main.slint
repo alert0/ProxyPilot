@@ -18,6 +18,7 @@ export component MainWindow inherits Window {
     callback select_node(int);
     callback rename_node(int, string);
     callback choose_core();
+    callback choose_import_file();
     callback navigate(string);
     callback action_requested(string);
 
@@ -138,6 +139,10 @@ export component MainWindow inherits Window {
                         }
                         HorizontalBox {
                             alignment: end;
+                            Button {
+                                text: "导入文本文件";
+                                clicked => { root.choose_import_file(); }
+                            }
                             Button {
                                 text: "解析并预览";
                                 clicked => { root.import_links(root.link_input); }
