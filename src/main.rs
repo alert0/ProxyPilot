@@ -218,7 +218,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 match result {
                     Ok(text) => {
                         app.set_link_input(text.into());
-                        app.set_status_message("文件内容已加载到本地输入框；请点击“解析并预览”确认导入。".into());
+                        app.set_status_message(
+                            "文件内容已加载到本地输入框；请点击“解析并预览”确认导入。".into(),
+                        );
                     }
                     Err(error) => app.set_status_message(error.into()),
                 }
