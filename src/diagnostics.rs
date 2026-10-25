@@ -256,8 +256,8 @@ mod tests {
             elapsed_ms: 123,
             message: "ok".to_owned(),
         };
-        save_history_to(&path, &[record.clone()]).unwrap();
-        save_history_to(&path, &[record]).unwrap();
+        save_history_to(&path, std::slice::from_ref(&record)).unwrap();
+        save_history_to(&path, std::slice::from_ref(&record)).unwrap();
         let raw = fs::read_to_string(&path).unwrap();
         let parsed: Vec<DiagnosticRecord> = serde_json::from_str(&raw).unwrap();
         assert_eq!(parsed.len(), 2);
