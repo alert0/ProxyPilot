@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, TextEdit } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, TextEdit, TextInput } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "ProxyPilot";
@@ -8,7 +8,14 @@ export component MainWindow inherits Window {
 
     in-out property <string> status_message: "M1：粘贴 HY2 分享链接或 Base64 内容可进行本地解析预览。";
     in-out property <string> link_input: "";
+    in-out property <[string]> node_rows: [];
+    in-out property <int> selected_node: -1;
+    in-out property <string> rename_input: "";
+    in-out property <string> node_count_text: "0";
     callback import_links(string);
+    callback node_action(int, string);
+    callback select_node(int);
+    callback rename_node(int, string);
     callback navigate(string);
     callback action_requested(string);
 
@@ -132,6 +139,42 @@ export component MainWindow inherits Window {
                             Button {
                                 text: "解析并预览";
                                 clicked => { root.import_links(root.link_input); }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: white;
+                    border-color: #e5eaf1;
+                    border-width: 1px;
+                    border-radius: 9px;
+                    VerticalBox {
+                        padding: 14px;
+                        spacing: 8px;
+                        HorizontalBox {
+                            Text { text: "本地节点清单"; color: #293548; font-size: 14px; font-weight: 700; }
+                            Rectangle { horizontal-stretch: 1; }
+                            Text { text: root.node_count_text + " / 10"; color: #7c899b; font-size: 11px; }
+                        }
+                        Text { text: "凭据存入 Windows 凭据管理器；节点清单只保存非敏感元数据。"; color: #8995a6; font-size: 10px; }
+                        for row[index] in root.node_rows: HorizontalBox {
+                            height: 32px;
+                            Text { text: row; color: #354257; font-size: 10px; vertical-alignment: center; horizontal-stretch: 1; }
+                            Button { text: "选择"; clicked => { root.select_node(index); } }
+                            Button { text: "启用/停用"; clicked => { root.node_action(index, "toggle"); } }
+                            Button { text: "删除"; clicked => { root.node_action(index, "delete"); } }
+                        }
+                        HorizontalBox {
+                            TextInput {
+                                text <=> root.rename_input;
+                                placeholder-text: "输入新节点名称";
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "重命名所选节点";
+                                enabled: root.selected_node >= 0;
+                                clicked => { root.rename_node(root.selected_node, root.rename_input); }
                             }
                         }
                     }
