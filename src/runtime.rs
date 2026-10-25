@@ -175,12 +175,14 @@ impl RuntimeManager {
         let Some(mut child) = self.child.take() else {
             return Err("无法取得 ProxyPilot 的 sing-box 进程句柄".to_owned());
         };
-        child
-            .kill()
-            .map_err(|_| "无法停止 ProxyPilot 自己启动的 sing-box 进程".to_owned())?;
-        child
-            .wait()
-            .map_err(|_| "等待 sing-box 退出失败".to_owned())?;
+        if child.kill().is_err() {
+            self.child = Some(child);
+            return Err("无法停止 ProxyPilot 自己启动的 sing-box 进程；已保留进程句柄以便重试".to_owned());
+        }
+        if child.wait().is_err() {
+            self.child = Some(child);
+            return Err("等待 sing-box 退出失败；已保留进程句柄以便重试".to_owned());
+        }
         let _ = fs::remove_file(&self.config_path);
         Ok("ProxyPilot 启动的 sing-box 进程已停止；其他进程未受影响".to_owned())
     }
