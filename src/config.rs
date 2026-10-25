@@ -208,9 +208,9 @@ pub fn validate_route_isolation(config: &Value) -> Result<(), ConfigError> {
         let inbound_tag = targets[0]
             .as_str()
             .ok_or_else(|| ConfigError::InvalidRouteIsolation("入口 tag 格式无效".to_owned()))?;
-        let outbound_tag = rule["outbound"]
-            .as_str()
-            .ok_or_else(|| ConfigError::InvalidRouteIsolation("路由规则缺少 outbound".to_owned()))?;
+        let outbound_tag = rule["outbound"].as_str().ok_or_else(|| {
+            ConfigError::InvalidRouteIsolation("路由规则缺少 outbound".to_owned())
+        })?;
         if !inbound_tags.contains(inbound_tag) || !outbound_tags.contains(outbound_tag) {
             return Err(ConfigError::InvalidRouteIsolation(
                 "路由引用了不存在的入口或出站".to_owned(),
