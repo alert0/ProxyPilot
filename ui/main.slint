@@ -55,7 +55,7 @@ export component MainWindow inherits Window {
 
             Rectangle { horizontal-stretch: 1; }
 
-            Text { text: "Windows Desktop  ·  M1"; color: #aab5c5; font-size: 11px; }
+            Text { text: "Windows Desktop  ·  M1–M4 验收中"; color: #aab5c5; font-size: 11px; }
         }
 
         HorizontalBox {
@@ -84,8 +84,8 @@ export component MainWindow inherits Window {
                     VerticalBox {
                         spacing: 5px;
                         Text { text: "sing-box 核心"; color: #e5ebf4; font-size: 12px; font-weight: 600; }
-                        Text { text: "尚未连接"; color: #a3afc0; font-size: 10px; }
-                        Text { text: "M1 · 导入预览阶段"; color: #e0bd77; font-size: 10px; }
+                        Text { text: "按需选择 / 未启动"; color: #a3afc0; font-size: 10px; }
+                        Text { text: "节点管理与运行时开发中"; color: #e0bd77; font-size: 10px; }
                     }
                 }
             }
@@ -185,9 +185,9 @@ export component MainWindow inherits Window {
                 HorizontalBox {
                     spacing: 12px;
                     for card[index] in [
-                        { title: "已导入节点", value: "00", detail: "目标 10 个" },
-                        { title: "已验证出口", value: "00", detail: "真实测试尚未接入" },
-                        { title: "异常节点", value: "00", detail: "无实时状态" }
+                        { title: "已导入节点", value: root.node_count_text, detail: "最多 10 个" },
+                        { title: "已验证出口", value: "—", detail: "显示最近一次测试结果" },
+                        { title: "异常节点", value: "—", detail: "未持久化测试历史" }
                     ]: Rectangle {
                         horizontal-stretch: 1;
                         background: white;
